@@ -5,6 +5,10 @@
  * @package ContextAuthorityToolkit
  */
 
+namespace ContextAuthorityToolkit;
+
+use WP_Post;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -12,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Handles glossary queries and caching.
  */
-class CAT_Glossary {
+class Cat_Glossary {
 	/**
 	 * Cache group.
 	 *
@@ -70,7 +74,8 @@ class CAT_Glossary {
 			}
 		);
 
-		return array_shift( $item ) ?: false;
+		$match = array_shift( $item );
+		return $match ? $match : false;
 	}
 
 	/**
@@ -108,7 +113,7 @@ class CAT_Glossary {
 		$items = array();
 		$posts = get_posts(
 			array(
-				'post_type'   => CAT_Glossary_Admin::POST_TYPE,
+				'post_type'   => Cat_Glossary_Admin::POST_TYPE,
 				'post_status' => 'publish',
 				'numberposts' => -1,
 			)
@@ -130,7 +135,7 @@ class CAT_Glossary {
 	 * @return object
 	 */
 	protected function post_to_glossary_item( WP_Post $post ) {
-		$alternatives = get_post_meta( $post->ID, CAT_Glossary_Admin::ALTERNATIVES_META_KEY, true );
+		$alternatives = get_post_meta( $post->ID, Cat_Glossary_Admin::ALTERNATIVES_META_KEY, true );
 
 		return (object) array(
 			'id'           => $post->ID,

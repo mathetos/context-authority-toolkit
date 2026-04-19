@@ -5,6 +5,8 @@
  * @package ContextAuthorityToolkit
  */
 
+namespace ContextAuthorityToolkit;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -12,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Enqueues hovercard assets.
  */
-class CAT_Glossary_Hovercards {
+class Cat_Glossary_Hovercards {
 	/**
 	 * Register frontend hooks.
 	 */
@@ -36,7 +38,7 @@ class CAT_Glossary_Hovercards {
 		wp_enqueue_script(
 			'cat-glossary-hovercards',
 			CAT_TOOLKIT_URL . 'assets/js/glossary-hovercards.js',
-			array( 'jquery' ),
+			array(),
 			CAT_TOOLKIT_VERSION,
 			true
 		);

@@ -3,47 +3,112 @@
 	display: inline;
 	background-color: rgba(230, 230, 230, 0.5);
 	border-bottom: 1px dashed #666;
+}
+
+.cat-glossary-item-trigger {
+	display: inline;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	line-height: inherit;
 	cursor: help;
+	text-decoration: inherit;
+}
+
+.cat-glossary-item-trigger:focus-visible {
+	outline: 2px solid #1a73e8;
+	outline-offset: 2px;
 }
 
 .cat-glossary-item-hidden-content {
-	display: none;
 	position: absolute;
-	left: 0;
-	top: calc(100% + 0.5rem);
+	left: 50%;
+	top: calc(100% + 11px);
+	transform: translateX(-50%);
 	z-index: 99999;
-	width: min(22rem, 85vw);
-	padding: 0.9rem 1rem;
-	background-color: #fff;
+	width: min(400px, 88vw);
+	padding: 18px 19px;
 	color: #1e1e1e;
-	border-radius: 0.35rem;
-	box-shadow: 0 4px 22px rgba(0, 0, 0, 0.18);
+	border: 1px solid transparent;
+	border-radius: 14px;
+	background:
+		linear-gradient( #ffffff, #ffffff ) padding-box,
+		linear-gradient( 95deg, #ff7ab6 0%, #9b8cff 28%, #66d1ff 52%, #6ee7b7 76%, #ffd166 100% ) border-box;
+	box-shadow:
+		0 12px 32px rgba(15, 23, 42, 0.14),
+		0 3px 9px rgba(15, 23, 42, 0.08);
+	opacity: 0;
+	transition: opacity 0.18s ease-in-out;
 }
 
-.cat-glossary-item-container.is-visible .cat-glossary-item-hidden-content,
-.cat-glossary-item-container:focus-within .cat-glossary-item-hidden-content,
-.cat-glossary-item-container:hover .cat-glossary-item-hidden-content {
-	display: block;
+.cat-glossary-item-hidden-content::before {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: -11px;
+	width: 0;
+	height: 0;
+	border-left: 10px solid transparent;
+	border-right: 10px solid transparent;
+	border-bottom: 10px solid #66d1ff;
+	transform: translateX(-50%);
+	pointer-events: none;
+}
+
+.cat-glossary-item-hidden-content::after {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: -8px;
+	width: 0;
+	height: 0;
+	border-left: 8px solid transparent;
+	border-right: 8px solid transparent;
+	border-bottom: 8px solid #ffffff;
+	transform: translateX(-50%);
+	pointer-events: none;
 }
 
 .cat-glossary-item-header {
 	display: block;
-	margin-bottom: 0.4rem;
-	font-size: 1rem;
-	font-weight: 600;
+	margin-bottom: 10px;
+	font-size: 14px;
+	font-weight: 700;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: #5b6272;
 	line-height: 1.3;
 }
 
 .cat-glossary-item-description {
 	display: block;
-	font-size: 0.9rem;
-	line-height: 1.45;
+	font-size: 16px;
+	line-height: 1.5;
 }
 
 .cat-glossary-item-description p {
-	margin: 0 0 0.5rem;
+	margin: 0 0 8px;
 }
 
 .cat-glossary-item-description p:last-child {
 	margin-bottom: 0;
+}
+
+.cat-glossary-item-link {
+	display: inline-block;
+	margin-top: 14px;
+	font-weight: 600;
+}
+
+.cat-glossary-item-container.is-visible .cat-glossary-item-hidden-content {
+	opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cat-glossary-item-hidden-content {
+		transition: none;
+	}
 }

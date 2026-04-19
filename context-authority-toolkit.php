@@ -13,13 +13,15 @@
  * @package ContextAuthorityToolkit
  */
 
+namespace ContextAuthorityToolkit;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /*
  * This plugin is a clean fork of the "WordPress.org Glossary" plugin
- * and remains licensed under GPL-2.0-or-later. See ATTRIBUTION.md.
+ * and remains licensed under GPL-2.0-or-later. See ATTRIBUTION.txt.
  */
 
 define( 'CAT_TOOLKIT_VERSION', '0.1.0' );
@@ -38,10 +40,10 @@ require_once CAT_TOOLKIT_DIR . 'includes/class-cat-glossary-hovercards.php';
  * @return void
  */
 function cat_toolkit_bootstrap() {
-	$glossary = new CAT_Glossary();
+	$glossary = new Cat_Glossary();
 
-	new CAT_Glossary_Admin();
-	new CAT_Glossary_Hovercards();
-	new CAT_Glossary_Handler( $glossary );
+	new Cat_Glossary_Admin();
+	new Cat_Glossary_Hovercards();
+	new Cat_Glossary_Handler( $glossary );
 }
-add_action( 'plugins_loaded', 'cat_toolkit_bootstrap' );
+add_action( 'plugins_loaded', __NAMESPACE__ . '\\cat_toolkit_bootstrap' );

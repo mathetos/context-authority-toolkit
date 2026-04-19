@@ -5,6 +5,8 @@
  * @package ContextAuthorityToolkit
  */
 
+namespace ContextAuthorityToolkit;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -12,11 +14,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Handles replacing matched glossary terms in content.
  */
-class CAT_Glossary_Handler {
+class Cat_Glossary_Handler {
 	/**
 	 * Glossary storage.
 	 *
-	 * @var CAT_Glossary
+	 * @var Cat_Glossary
 	 */
 	private $glossary;
 
@@ -28,11 +30,18 @@ class CAT_Glossary_Handler {
 	private $processed = array();
 
 	/**
+	 * Incrementing instance counter for unique trigger/panel IDs.
+	 *
+	 * @var int
+	 */
+	private $instance_counter = 0;
+
+	/**
 	 * Constructor.
 	 *
-	 * @param CAT_Glossary $glossary Glossary object.
+	 * @param Cat_Glossary $glossary Glossary object.
 	 */
-	public function __construct( CAT_Glossary $glossary ) {
+	public function __construct( Cat_Glossary $glossary ) {
 		$this->glossary = $glossary;
 
 		add_filter( 'the_content', array( $this, 'glossary_links' ), 20 );
@@ -58,24 +67,37 @@ class CAT_Glossary_Handler {
 			return $matches[0];
 		}
 		$this->processed[ $processed_key ] = true;
+		$this->instance_counter++;
 
-		$description_html = wpautop( wp_kses_post( $glossary_item->description ) );
-		if ( current_user_can( 'edit_post', $glossary_item->id ) ) {
+		$description_html = wp_kses_post( $glossary_item->description );
+		$description_html = preg_replace( '/<p>/i', '', $description_html );
+		$description_html = preg_replace( '/<\/p>/i', '<br />', $description_html );
+		$description_html = preg_replace( "/\n/", '<br />', $description_html );
+		$description_html = preg_replace( '/(<br \/>)+/i', '<br />', $description_html );
+		$learn_more_url = get_permalink( $glossary_item->id );
+		if ( ! empty( $learn_more_url ) ) {
 			$description_html .= sprintf(
-				'<p><a href="%1$s">%2$s</a></p>',
-				esc_url( get_edit_post_link( $glossary_item->id ) ),
-				esc_html__( 'Edit Term', 'context-authority-toolkit' )
+				'<br /><a class="cat-glossary-item-link" href="%1$s">%2$s</a>',
+				esc_url( $learn_more_url ),
+				esc_html__( 'Learn more', 'context-authority-toolkit' )
 			);
 		}
 
+		$trigger_id = 'cat-glossary-item-trigger-' . absint( $glossary_item->id ) . '-' . $this->instance_counter;
+		$panel_id   = 'cat-glossary-item-panel-' . absint( $glossary_item->id ) . '-' . $this->instance_counter;
+
 		$tooltip_html = sprintf(
-			'<span class="cat-glossary-item-header">%1$s</span><span class="cat-glossary-item-description">%2$s</span>',
+			'<span id="%1$s" class="cat-glossary-item-hidden-content" role="dialog" aria-labelledby="%2$s" hidden><span class="cat-glossary-item-header">%3$s</span><span class="cat-glossary-item-description">%4$s</span></span>',
+			esc_attr( $panel_id ),
+			esc_attr( $trigger_id ),
 			esc_html( $glossary_item->name ),
 			$description_html
 		);
 
 		return sprintf(
-			'<span tabindex="0" class="cat-glossary-item-container">%1$s<span class="cat-glossary-item-hidden-content">%2$s</span></span>',
+			'<span class="cat-glossary-item-container"><button type="button" id="%1$s" class="cat-glossary-item-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="%2$s">%3$s</button>%4$s</span>',
+			esc_attr( $trigger_id ),
+			esc_attr( $panel_id ),
 			esc_html( $found_text ),
 			$tooltip_html
 		);
@@ -98,6 +120,7 @@ class CAT_Glossary_Handler {
 		}
 
 		$this->processed = array();
+		$this->instance_counter = 0;
 		$textarr         = wp_html_split( $content );
 		$ignore_elements = array( 'code', '/code', 'a', '/a', 'pre', '/pre', 'dt', '/dt', 'option', '/option' );
 		$inside_block    = array();

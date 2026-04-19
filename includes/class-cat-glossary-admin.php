@@ -5,6 +5,8 @@
  * @package ContextAuthorityToolkit
  */
 
+namespace ContextAuthorityToolkit;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -12,11 +14,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Registers glossary admin UI.
  */
-class CAT_Glossary_Admin {
+class Cat_Glossary_Admin {
 	/**
 	 * Glossary post type slug.
 	 */
-	const POST_TYPE = 'cat_glossary';
+	const POST_TYPE = 'term';
 
 	/**
 	 * Alternatives meta key.
@@ -53,17 +55,18 @@ class CAT_Glossary_Admin {
 			self::POST_TYPE,
 			array(
 				'labels'       => array(
-					'name'               => __( 'Context Terms', 'context-authority-toolkit' ),
-					'singular_name'      => __( 'Context Term', 'context-authority-toolkit' ),
+					'name'               => __( 'Terms', 'context-authority-toolkit' ),
+					'singular_name'      => __( 'Glossary Term', 'context-authority-toolkit' ),
 					'add_new'            => __( 'Add New', 'context-authority-toolkit' ),
-					'add_new_item'       => __( 'Add New Context Term', 'context-authority-toolkit' ),
-					'edit_item'          => __( 'Edit Context Term', 'context-authority-toolkit' ),
-					'new_item'           => __( 'New Context Term', 'context-authority-toolkit' ),
-					'view_item'          => __( 'View Context Term', 'context-authority-toolkit' ),
-					'search_items'       => __( 'Search Context Terms', 'context-authority-toolkit' ),
-					'not_found'          => __( 'No context terms found.', 'context-authority-toolkit' ),
-					'not_found_in_trash' => __( 'No context terms found in Trash.', 'context-authority-toolkit' ),
-					'menu_name'          => __( 'Context Toolkit', 'context-authority-toolkit' ),
+					'add_new_item'       => __( 'Add New Glossary Term', 'context-authority-toolkit' ),
+					'edit_item'          => __( 'Edit Glossary Term', 'context-authority-toolkit' ),
+					'new_item'           => __( 'New Glossary Term', 'context-authority-toolkit' ),
+					'view_item'          => __( 'View Glossary Term', 'context-authority-toolkit' ),
+					'search_items'       => __( 'Search Glossary Terms', 'context-authority-toolkit' ),
+					'not_found'          => __( 'No glossary terms found.', 'context-authority-toolkit' ),
+					'not_found_in_trash' => __( 'No glossary terms found in Trash.', 'context-authority-toolkit' ),
+					'menu_name'          => __( 'Term', 'context-authority-toolkit' ),
+					'name_admin_bar'     => __( 'Glossary Term', 'context-authority-toolkit' ),
 				),
 				'public'       => true,
 				'show_ui'      => true,
@@ -129,6 +132,14 @@ class CAT_Glossary_Admin {
 	 * @return void
 	 */
 	public function save_alternatives_metabox( $post_id ) {
+		if ( self::POST_TYPE !== get_post_type( $post_id ) ) {
+			return;
+		}
+
+		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+			return;
+		}
+
 		if ( wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
 			return;
 		}

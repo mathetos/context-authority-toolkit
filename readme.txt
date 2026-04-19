@@ -1,6 +1,6 @@
 === Context & Authority Toolkit ===
-Contributors: reach
-Tags: glossary, tooltips, context
+Contributors: webdevmattcrom
+Tags: glossary, tooltips, schema, seo, aeo
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.2
@@ -28,7 +28,7 @@ upstream project. This fork keeps GPL-2.0-or-later licensing and documents
 notable modifications in this repository.
 
 For full provenance and attribution details, see:
-* ATTRIBUTION.md
+* ATTRIBUTION.txt
 
 == Changelog ==
 
@@ -36,3 +36,5 @@ For full provenance and attribution details, see:
 * Initial clean fork from wporg-glossary.
 * Added nonce and capability checks for metabox saving.
 * Switched to prefixed classes and plugin-specific CPT/meta keys.
+* Replaced jQuery tooltip behavior with a vanilla JavaScript implementation.
+* Added strict behavior/security test runner and documented quality gates.
