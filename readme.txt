@@ -4,7 +4,7 @@ Tags: glossary, tooltips, schema, seo, aeo
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.2
-Stable tag: 0.1.0
+Stable tag: 0.9.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,10 @@ For full provenance and attribution details, see:
 * ATTRIBUTION.txt
 
 == Changelog ==
+
+= 0.9.1 =
+* Added `excerpt` support to the glossary `term` post type for cleaner summary and SEO workflows.
+* Added SEO meta description fallbacks that use the term excerpt when no description is set in Yoast or Rank Math.
 
 = 0.9.0 =
 * Added new SEO_Peacekeeper module to generate canonical DefinedTerm schema from CAT-owned term data.

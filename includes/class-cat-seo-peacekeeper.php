@@ -53,8 +53,10 @@ class Cat_SEO_Peacekeeper {
 		add_action( 'admin_menu', array( $this, 'register_settings_page' ) );
 		add_action( 'wp_head', array( $this, 'output_standalone_json_ld' ), 99 );
 		add_filter( 'the_content', array( $this, 'add_semantic_term_markup' ), 30 );
+		add_filter( 'wpseo_metadesc', array( $this, 'filter_yoast_meta_description' ) );
 		add_filter( 'wpseo_schema_graph_pieces', array( $this, 'inject_yoast_graph_piece' ), 20, 2 );
 		add_filter( 'wpseo_schema_needs_breadcrumb', array( $this, 'filter_yoast_breadcrumb_setting' ) );
+		add_filter( 'rank_math/frontend/description', array( $this, 'filter_rank_math_meta_description' ) );
 		add_filter( 'rank_math/json_ld', array( $this, 'inject_rank_math_json_ld' ), 20, 2 );
 		add_filter( 'rank_math/json_ld/breadcrumbs_enabled', array( $this, 'filter_rank_math_breadcrumb_setting' ) );
 		add_filter( self::SEOPRESS_SCHEMA_FILTER, array( $this, 'inject_seopress_schema' ) );
@@ -648,6 +650,44 @@ class Cat_SEO_Peacekeeper {
 	}
 
 	/**
+	 * Provide Yoast meta description fallback from term excerpt.
+	 *
+	 * @param string $meta_description Existing meta description.
+	 * @return string
+	 */
+	public function filter_yoast_meta_description( $meta_description ) {
+		if ( '' !== trim( (string) $meta_description ) ) {
+			return $meta_description;
+		}
+
+		$fallback = $this->get_context_meta_description_text();
+		if ( '' !== $fallback ) {
+			return $fallback;
+		}
+
+		return $meta_description;
+	}
+
+	/**
+	 * Provide Rank Math meta description fallback from term excerpt.
+	 *
+	 * @param string $description Existing meta description.
+	 * @return string
+	 */
+	public function filter_rank_math_meta_description( $description ) {
+		if ( '' !== trim( (string) $description ) ) {
+			return $description;
+		}
+
+		$fallback = $this->get_context_meta_description_text();
+		if ( '' !== $fallback ) {
+			return $fallback;
+		}
+
+		return $description;
+	}
+
+	/**
 	 * Resolve current context term ID.
 	 *
 	 * @return int
@@ -669,6 +709,25 @@ class Cat_SEO_Peacekeeper {
 		}
 
 		return 0;
+	}
+
+	/**
+	 * Get sanitized meta description fallback for current term context.
+	 *
+	 * @return string
+	 */
+	private function get_context_meta_description_text() {
+		$term_id = $this->get_context_term_post_id();
+		if ( $term_id <= 0 ) {
+			return '';
+		}
+
+		$excerpt = trim( (string) get_post_field( 'post_excerpt', $term_id ) );
+		if ( '' === $excerpt ) {
+			return '';
+		}
+
+		return $this->prepare_read_aloud_text( $excerpt );
 	}
 
 	/**

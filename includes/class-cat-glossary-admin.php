@@ -92,7 +92,7 @@ class Cat_Glossary_Admin {
 					'slug'       => self::POST_TYPE,
 					'with_front' => false,
 				),
-				'supports'     => array( 'title', 'editor', 'revisions', 'custom-fields' ),
+				'supports'     => array( 'title', 'editor', 'excerpt', 'revisions', 'custom-fields' ),
 			)
 		);
 	}
