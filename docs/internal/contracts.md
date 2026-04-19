@@ -10,6 +10,8 @@ This document defines live behavior contracts that must remain true unless a cha
 - Longer terms must be prioritized to avoid shorter-term collisions.
 - Terms are not wrapped inside excluded HTML contexts (for example `a`, `code`, `pre`, `option`, existing glossary container markup).
 - Repeated appearances of the same matched term in one content string are wrapped once.
+- When `cat_disable_autolinking` is enabled for a post, no glossary auto-linking is applied in that post context.
+- Term single content never auto-links its own term title; other glossary terms may still be linked.
 
 ## Markup and accessibility contract
 
@@ -24,6 +26,8 @@ This document defines live behavior contracts that must remain true unless a cha
   - `role="dialog"`
   - `aria-labelledby` linked to trigger id
   - `hidden` initial state
+- Tooltip description is sourced from `cat_tooltip_content` meta (not term `post_content`).
+- Tooltip description treats HTML as plain text and supports line breaks.
 - Frontend content includes a user-facing `Learn more` link to the term permalink.
 - Legacy frontend text `Edit Term` must not appear.
 

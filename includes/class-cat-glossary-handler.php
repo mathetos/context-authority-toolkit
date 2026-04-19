@@ -37,6 +37,13 @@ class Cat_Glossary_Handler {
 	private $instance_counter = 0;
 
 	/**
+	 * Current context post ID.
+	 *
+	 * @var int
+	 */
+	private $context_post_id = 0;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Cat_Glossary $glossary Glossary object.
@@ -62,6 +69,10 @@ class Cat_Glossary_Handler {
 			return $matches[0];
 		}
 
+		if ( $this->context_post_id > 0 && absint( $glossary_item->id ) === $this->context_post_id ) {
+			return $matches[0];
+		}
+
 		$processed_key = strtolower( $found_text );
 		if ( ! empty( $this->processed[ $processed_key ] ) ) {
 			return $matches[0];
@@ -69,11 +80,8 @@ class Cat_Glossary_Handler {
 		$this->processed[ $processed_key ] = true;
 		$this->instance_counter++;
 
-		$description_html = wp_kses_post( $glossary_item->description );
-		$description_html = preg_replace( '/<p>/i', '', $description_html );
-		$description_html = preg_replace( '/<\/p>/i', '<br />', $description_html );
-		$description_html = preg_replace( "/\n/", '<br />', $description_html );
-		$description_html = preg_replace( '/(<br \/>)+/i', '<br />', $description_html );
+		$description_text = is_string( $glossary_item->description ) ? trim( $glossary_item->description ) : '';
+		$description_html = nl2br( esc_html( $description_text ) );
 		$learn_more_url = get_permalink( $glossary_item->id );
 		if ( ! empty( $learn_more_url ) ) {
 			$description_html .= sprintf(
@@ -111,6 +119,12 @@ class Cat_Glossary_Handler {
 	 */
 	public function glossary_links( $content ) {
 		if ( is_feed() || is_embed() || is_admin() ) {
+			return $content;
+		}
+
+		$this->context_post_id = $this->get_context_post_id();
+
+		if ( $this->context_post_id > 0 && $this->is_autolinking_disabled_for_context() ) {
 			return $content;
 		}
 
@@ -165,5 +179,36 @@ class Cat_Glossary_Handler {
 		}
 
 		return implode( '', $textarr );
+	}
+
+	/**
+	 * Resolve the current post context ID.
+	 *
+	 * @return int
+	 */
+	private function get_context_post_id() {
+		$post_id = get_the_ID();
+
+		if ( $post_id > 0 ) {
+			return absint( $post_id );
+		}
+
+		global $post;
+		if ( $post instanceof \WP_Post ) {
+			return absint( $post->ID );
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Determine if auto-linking is disabled for the current post context.
+	 *
+	 * @return bool
+	 */
+	private function is_autolinking_disabled_for_context() {
+		$is_disabled = get_post_meta( $this->context_post_id, Cat_Glossary_Admin::DISABLE_AUTOLINKING_META_KEY, true );
+
+		return (bool) rest_sanitize_boolean( $is_disabled );
 	}
 }

@@ -12,8 +12,9 @@ Context & Authority Toolkit adds glossary term detection and tooltip/popover ren
   - Bootstraps plugin services on `plugins_loaded`
 - `includes/class-cat-glossary-admin.php`
   - Registers glossary CPT (`term`)
-  - Registers and saves alternatives metabox
-  - Enforces capability + nonce checks on save
+  - Registers REST-backed meta for block editor sidebar fields
+  - Enqueues custom block editor sidebar controls
+  - Runs one-time tooltip content migration from legacy post content
 - `includes/class-cat-glossary.php`
   - Loads published glossary items
   - Handles matching data and regex generation
@@ -31,8 +32,10 @@ Context & Authority Toolkit adds glossary term detection and tooltip/popover ren
 ## Data model
 
 - CPT: `term`
-- Post content: glossary definition/description
+- Post content: block-editor single term page content
 - Meta key: `cat_alternatives` (array of alternate names)
+- Meta key: `cat_tooltip_content` (plain-text tooltip body with line breaks)
+- Meta key: `cat_disable_autolinking` (boolean toggle for public content)
 
 ## Content flow
 

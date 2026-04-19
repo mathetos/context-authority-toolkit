@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin glossary registration and metabox handling.
+ * Admin glossary registration and block editor field handling.
  *
  * @package ContextAuthorityToolkit
  */
@@ -26,23 +26,28 @@ class Cat_Glossary_Admin {
 	const ALTERNATIVES_META_KEY = 'cat_alternatives';
 
 	/**
-	 * Nonce action.
+	 * Tooltip content meta key.
 	 */
-	const ALTERNATIVES_NONCE_ACTION = 'cat_save_alternatives';
+	const TOOLTIP_META_KEY = 'cat_tooltip_content';
 
 	/**
-	 * Nonce name.
+	 * Disable auto-linking meta key.
 	 */
-	const ALTERNATIVES_NONCE_NAME = 'cat_alternatives_nonce';
+	const DISABLE_AUTOLINKING_META_KEY = 'cat_disable_autolinking';
+
+	/**
+	 * Migration option key.
+	 */
+	const TOOLTIP_MIGRATION_OPTION_KEY = 'cat_tooltip_meta_migration_v1';
 
 	/**
 	 * Wire admin hooks.
 	 */
 	public function __construct() {
 		add_action( 'init', array( $this, 'register_post_type' ) );
-		add_action( 'add_meta_boxes', array( $this, 'register_alternatives_metabox' ) );
-		add_action( 'edit_form_after_title', array( $this, 'form_after_title' ) );
-		add_action( 'save_post_' . self::POST_TYPE, array( $this, 'save_alternatives_metabox' ) );
+		add_action( 'init', array( $this, 'register_post_meta' ) );
+		add_action( 'init', array( $this, 'maybe_run_tooltip_migration' ), 20 );
+		add_action( 'enqueue_block_editor_assets', array( $this, 'enqueue_block_editor_assets' ) );
 	}
 
 	/**
@@ -70,111 +75,216 @@ class Cat_Glossary_Admin {
 				),
 				'public'       => true,
 				'show_ui'      => true,
+				'show_in_rest' => true,
 				'hierarchical' => false,
-				'rewrite'      => false,
-				'supports'     => array( 'title', 'editor', 'revisions' ),
+				'rewrite'      => array(
+					'slug'       => self::POST_TYPE,
+					'with_front' => false,
+				),
+				'supports'     => array( 'title', 'editor', 'revisions', 'custom-fields' ),
 			)
 		);
 	}
 
 	/**
-	 * Register alternatives metabox.
+	 * Register REST-backed post meta for the term editor.
 	 *
 	 * @return void
 	 */
-	public function register_alternatives_metabox() {
-		add_meta_box(
-			'cat-alternate-names',
-			__( 'Alternate Names', 'context-authority-toolkit' ),
-			array( $this, 'alternative_names_metabox' ),
+	public function register_post_meta() {
+		register_post_meta(
 			self::POST_TYPE,
-			'advanced',
-			'high'
+			self::ALTERNATIVES_META_KEY,
+			array(
+				'type'              => 'array',
+				'single'            => true,
+				'show_in_rest'      => array(
+					'schema' => array(
+						'type'    => 'array',
+						'items'   => array(
+							'type' => 'string',
+						),
+						'default' => array(),
+					),
+				),
+				'sanitize_callback' => array( $this, 'sanitize_alternatives_meta' ),
+				'auth_callback'     => array( $this, 'can_edit_term_meta' ),
+			)
+		);
+
+		register_post_meta(
+			self::POST_TYPE,
+			self::TOOLTIP_META_KEY,
+			array(
+				'type'              => 'string',
+				'single'            => true,
+				'default'           => '',
+				'show_in_rest'      => true,
+				'sanitize_callback' => array( $this, 'sanitize_tooltip_meta' ),
+				'auth_callback'     => array( $this, 'can_edit_term_meta' ),
+			)
+		);
+
+		$this->register_public_post_meta();
+	}
+
+	/**
+	 * Register post meta used across public post types.
+	 *
+	 * @return void
+	 */
+	private function register_public_post_meta() {
+		$post_types = get_post_types(
+			array(
+				'public'  => true,
+				'show_ui' => true,
+			),
+			'names'
+		);
+
+		foreach ( $post_types as $post_type ) {
+			register_post_meta(
+				$post_type,
+				self::DISABLE_AUTOLINKING_META_KEY,
+				array(
+					'type'              => 'boolean',
+					'single'            => true,
+					'default'           => false,
+					'show_in_rest'      => true,
+					'sanitize_callback' => 'rest_sanitize_boolean',
+					'auth_callback'     => array( $this, 'can_edit_term_meta' ),
+				)
+			);
+		}
+	}
+
+	/**
+	 * Enqueue custom sidebar controls for the block editor.
+	 *
+	 * @return void
+	 */
+	public function enqueue_block_editor_assets() {
+		$post_types = array_values(
+			get_post_types(
+				array(
+					'public'  => true,
+					'show_ui' => true,
+				),
+				'names'
+			)
+		);
+
+		wp_enqueue_script(
+			'cat-term-editor-sidebar',
+			CAT_TOOLKIT_URL . 'assets/js/term-editor-sidebar.js',
+			array( 'wp-components', 'wp-data', 'wp-edit-post', 'wp-element', 'wp-i18n', 'wp-plugins' ),
+			CAT_TOOLKIT_VERSION,
+			true
+		);
+
+		wp_add_inline_script(
+			'cat-term-editor-sidebar',
+			'window.catToolkitEditor = ' . wp_json_encode(
+				array(
+					'publicPostTypes'     => $post_types,
+					'disableAutolinkMeta' => self::DISABLE_AUTOLINKING_META_KEY,
+				)
+			) . ';',
+			'before'
 		);
 	}
 
 	/**
-	 * Render advanced metaboxes after title.
+	 * Restrict REST/meta writes to users who can edit the post.
 	 *
-	 * @return void
+	 * @param bool   $allowed  Whether access is already allowed.
+	 * @param string $meta_key Meta key.
+	 * @param int    $post_id  Post ID.
+	 * @param int    $user_id  User ID.
+	 * @return bool
 	 */
-	public function form_after_title() {
-		global $post, $wp_meta_boxes;
-
-		if ( ! $post || self::POST_TYPE !== $post->post_type ) {
-			return;
-		}
-
-		do_meta_boxes( get_current_screen(), 'advanced', $post );
-		unset( $wp_meta_boxes[ self::POST_TYPE ]['advanced'] );
+	public function can_edit_term_meta( $allowed, $meta_key, $post_id, $user_id ) {
+		return current_user_can( 'edit_post', $post_id );
 	}
 
 	/**
-	 * Output alternative names metabox.
+	 * Sanitize alternatives meta.
 	 *
-	 * @param WP_Post $post Current post.
-	 * @return void
+	 * @param mixed $names Raw names from request.
+	 * @return string[]
 	 */
-	public function alternative_names_metabox( $post ) {
-		$alternatives = get_post_meta( $post->ID, self::ALTERNATIVES_META_KEY, true );
-		$alternatives = is_array( $alternatives ) ? $alternatives : array();
-
-		wp_nonce_field( self::ALTERNATIVES_NONCE_ACTION, self::ALTERNATIVES_NONCE_NAME );
-
-		echo '<p><label for="cat_alternative_names">' . esc_html__( 'Comma-separated alternative names or abbreviations for this term.', 'context-authority-toolkit' ) . '</label></p>';
-		echo '<input type="text" id="cat_alternative_names" name="cat_alternative_names" class="large-text" value="' . esc_attr( implode( ', ', $alternatives ) ) . '" />';
-	}
-
-	/**
-	 * Save alternative names metabox data.
-	 *
-	 * @param int $post_id Post ID.
-	 * @return void
-	 */
-	public function save_alternatives_metabox( $post_id ) {
-		if ( self::POST_TYPE !== get_post_type( $post_id ) ) {
-			return;
+	public function sanitize_alternatives_meta( $names ) {
+		if ( is_string( $names ) ) {
+			$names = preg_split( '!,\s*!', $names );
 		}
 
-		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
-			return;
+		if ( ! is_array( $names ) ) {
+			return array();
 		}
 
-		if ( wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
-			return;
-		}
-
-		if ( ! current_user_can( 'edit_post', $post_id ) ) {
-			return;
-		}
-
-		if ( ! isset( $_POST[ self::ALTERNATIVES_NONCE_NAME ] ) ) {
-			return;
-		}
-
-		$nonce = sanitize_text_field( wp_unslash( $_POST[ self::ALTERNATIVES_NONCE_NAME ] ) );
-		if ( ! wp_verify_nonce( $nonce, self::ALTERNATIVES_NONCE_ACTION ) ) {
-			return;
-		}
-
-		if ( ! isset( $_POST['cat_alternative_names'] ) ) {
-			delete_post_meta( $post_id, self::ALTERNATIVES_META_KEY );
-			return;
-		}
-
-		$names = sanitize_text_field( wp_unslash( $_POST['cat_alternative_names'] ) );
-		$names = preg_split( '!,\s*!', $names );
 		$names = array_map( 'trim', $names );
 		$names = array_map( 'sanitize_text_field', $names );
 		$names = array_unique( $names );
 
-		$names = array_filter(
-			$names,
-			function ( $name ) {
-				return strlen( $name ) >= 2;
-			}
+		return array_values(
+			array_filter(
+				$names,
+				function ( $name ) {
+					return strlen( $name ) >= 2;
+				}
+			)
+		);
+	}
+
+	/**
+	 * Sanitize tooltip text meta.
+	 *
+	 * @param mixed $tooltip Tooltip text.
+	 * @return string
+	 */
+	public function sanitize_tooltip_meta( $tooltip ) {
+		if ( ! is_string( $tooltip ) ) {
+			return '';
+		}
+
+		$tooltip = wp_check_invalid_utf8( $tooltip );
+		$tooltip = preg_replace( "/\r\n|\r/", "\n", $tooltip );
+
+		return trim( $tooltip );
+	}
+
+	/**
+	 * Migrate legacy post content into tooltip meta once.
+	 *
+	 * @return void
+	 */
+	public function maybe_run_tooltip_migration() {
+		if ( get_option( self::TOOLTIP_MIGRATION_OPTION_KEY ) ) {
+			return;
+		}
+
+		$term_posts = get_posts(
+			array(
+				'post_type'      => self::POST_TYPE,
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+			)
 		);
 
-		update_post_meta( $post_id, self::ALTERNATIVES_META_KEY, array_values( $names ) );
+		foreach ( $term_posts as $term_post ) {
+			$existing_tooltip = get_post_meta( $term_post->ID, self::TOOLTIP_META_KEY, true );
+			if ( is_string( $existing_tooltip ) && '' !== trim( $existing_tooltip ) ) {
+				continue;
+			}
+
+			$legacy_content = is_string( $term_post->post_content ) ? trim( $term_post->post_content ) : '';
+			if ( '' === $legacy_content ) {
+				continue;
+			}
+
+			update_post_meta( $term_post->ID, self::TOOLTIP_META_KEY, $legacy_content );
+		}
+
+		update_option( self::TOOLTIP_MIGRATION_OPTION_KEY, 1, false );
 	}
 }

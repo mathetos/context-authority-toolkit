@@ -4,8 +4,16 @@
  *
  * Execute using: wp eval-file tests/run-behavior-tests.php
  *
- * @package ContextAuthorityToolkit
+ * PHP version 7.2+
+ *
+ * @category ContextAuthorityToolkit
+ * @package  ContextAuthorityToolkit
+ * @author   Crucible CRM <support@cruciblecrm.com>
+ * @license  GPL-2.0-or-later https://www.gnu.org/licenses/gpl-2.0.html
+ * @link     https://cruciblecrm.com/
  */
+
+// phpcs:disable Generic.Files.LineLength.TooLong
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -24,7 +32,8 @@ $failures = array();
  * Record assertion failures.
  *
  * @param bool   $condition Condition result.
- * @param string $message Failure message.
+ * @param string $message   Failure message.
+ *
  * @return void
  */
 function cat_assert( $condition, $message ) {
@@ -40,6 +49,7 @@ function cat_assert( $condition, $message ) {
  *
  * @param string $haystack Full string.
  * @param string $needle   Search token.
+ *
  * @return int
  */
 function cat_count_occurrences( $haystack, $needle ) {
@@ -49,24 +59,51 @@ function cat_count_occurrences( $haystack, $needle ) {
 /**
  * Create a glossary term post.
  *
- * @param string   $name Term name.
- * @param string   $description Description.
- * @param string[] $alternatives Alternatives list.
+ * @param string   $name           Term name.
+ * @param string   $single_content Single term page content.
+ * @param string[] $alternatives   Alternatives list.
+ * @param string   $tooltip        Tooltip text.
+ *
  * @return int
  */
-function cat_create_term( $name, $description, array $alternatives = array() ) {
+function cat_create_term( $name, $single_content, array $alternatives = array(), $tooltip = '' ) {
 	$post_id = wp_insert_post(
 		array(
 			'post_type'    => \ContextAuthorityToolkit\Cat_Glossary_Admin::POST_TYPE,
 			'post_status'  => 'publish',
 			'post_title'   => $name,
-			'post_content' => $description,
+			'post_content' => $single_content,
 		)
 	);
 
 	if ( ! is_wp_error( $post_id ) && ! empty( $alternatives ) ) {
 		update_post_meta( $post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_META_KEY, $alternatives );
 	}
+
+	if ( ! is_wp_error( $post_id ) && '' !== $tooltip ) {
+		update_post_meta( $post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_META_KEY, $tooltip );
+	}
+
+	return (int) $post_id;
+}
+
+/**
+ * Create a public post for content-linking tests.
+ *
+ * @param string $title   Post title.
+ * @param string $content Post content.
+ *
+ * @return int
+ */
+function cat_create_public_post( $title, $content ) {
+	$post_id = wp_insert_post(
+		array(
+			'post_type'    => 'post',
+			'post_status'  => 'publish',
+			'post_title'   => $title,
+			'post_content' => $content,
+		)
+	);
 
 	return (int) $post_id;
 }
@@ -87,11 +124,15 @@ if ( empty( $admin_users ) ) {
 $admin_user_id = (int) $admin_users[0];
 wp_set_current_user( $admin_user_id );
 
+$admin_handler = new \ContextAuthorityToolkit\Cat_Glossary_Admin();
+$admin_handler->register_post_type();
+$admin_handler->register_post_meta();
+
 $test_post_ids = array();
 
 // Test 1: Longer term precedence should still allow shorter standalone matches.
-$test_post_ids[] = cat_create_term( 'WordPress', 'Short description.' );
-$test_post_ids[] = cat_create_term( 'WordPress.org', 'Long description.' );
+$test_post_ids[] = cat_create_term( 'WordPress', 'Single content A', array(), 'Short description.' );
+$test_post_ids[] = cat_create_term( 'WordPress.org', 'Single content B', array(), 'Long description.' );
 $content         = 'WordPress.org powers WordPress.';
 $filtered        = apply_filters( 'the_content', $content );
 
@@ -105,7 +146,7 @@ cat_assert(
 );
 
 // Test 2: Short term case sensitivity (<=3 chars) should require exact case.
-$test_post_ids[] = cat_create_term( 'API', 'Application Programming Interface.' );
+$test_post_ids[] = cat_create_term( 'API', 'Single content C', array(), 'Application Programming Interface.' );
 $filtered_case   = apply_filters( 'the_content', 'api and API are different here.' );
 cat_assert(
 	cat_count_occurrences( $filtered_case, 'cat-glossary-item-container' ) === 1,
@@ -140,7 +181,12 @@ cat_assert(
 );
 
 // Test 5: Interactive popover markup contract and Learn more permalink link.
-$learn_more_post_id = cat_create_term( 'Permalink Term', 'Permalink test description.' );
+$learn_more_post_id = cat_create_term(
+	'Permalink Term',
+	'Single term block content should not be used as tooltip.',
+	array(),
+	"Tooltip line one.\n<strong>Tooltip line two</strong>"
+);
 $test_post_ids[]    = $learn_more_post_id;
 $filtered_link      = apply_filters( 'the_content', 'Permalink Term appears in content.' );
 $expected_href      = esc_url( get_permalink( $learn_more_post_id ) );
@@ -190,16 +236,32 @@ cat_assert(
 	'Learn more link test failed: href does not match term permalink.'
 );
 cat_assert(
+	strpos( $expected_href, '?post_type=' ) === false && strpos( $expected_href, '&p=' ) === false,
+	'Learn more link test failed: expected permalink URL instead of query-style URL.'
+);
+cat_assert(
 	strpos( $filtered_link, 'Edit Term' ) === false,
 	'Learn more link test failed: legacy Edit Term link text must not appear in frontend output.'
 );
+cat_assert(
+	strpos( $filtered_link, 'Tooltip line one.<br />' ) !== false,
+	'Tooltip source test failed: expected newline conversion into <br />.'
+);
+cat_assert(
+	strpos( $filtered_link, '&lt;strong&gt;Tooltip line two&lt;/strong&gt;' ) !== false,
+	'Tooltip source test failed: expected tooltip HTML to be escaped and rendered as text.'
+);
+cat_assert(
+	strpos( $filtered_link, 'Single term block content should not be used as tooltip.' ) === false,
+	'Tooltip source test failed: tooltip output still appears to source from post_content.'
+);
 
-// Test 6: Save handler security gates.
-$admin_handler     = new \ContextAuthorityToolkit\Cat_Glossary_Admin();
-$secured_post_id   = cat_create_term( 'Security Term', 'Security test term.' );
-$test_post_ids[]   = $secured_post_id;
-$subscriber_login  = 'cat_subscriber_' . wp_generate_password( 8, false, false );
-$subscriber_user   = wp_insert_user(
+// Test 6: Meta authorization callback should reject subscribers and allow admins.
+$secured_post_id = cat_create_term( 'Security Term', 'Security test term.', array(), 'Security tooltip.' );
+$test_post_ids[] = $secured_post_id;
+
+$subscriber_login = 'cat_subscriber_' . wp_generate_password( 8, false, false );
+$subscriber_user  = wp_insert_user(
 	array(
 		'user_login' => $subscriber_login,
 		'user_pass'  => wp_generate_password( 24, true, true ),
@@ -208,48 +270,120 @@ $subscriber_user   = wp_insert_user(
 	)
 );
 
-// Invalid capability should fail even with nonce.
+// Subscriber should not be authorized to edit term meta.
 if ( ! is_wp_error( $subscriber_user ) ) {
 	wp_set_current_user( (int) $subscriber_user );
-	$_POST = array(
-		\ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_NONCE_NAME => wp_create_nonce( \ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_NONCE_ACTION ),
-		'cat_alternative_names'                     => 'NoAccess',
-	);
-	$admin_handler->save_alternatives_metabox( $secured_post_id );
-	$saved = get_post_meta( $secured_post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_META_KEY, true );
+	$allowed = $admin_handler->can_edit_term_meta( false, \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_META_KEY, $secured_post_id, (int) $subscriber_user );
 	cat_assert(
-		empty( $saved ),
-		'Security test failed: subscriber should not be able to save alternatives.'
+		false === $allowed,
+		'Security test failed: subscriber should not be authorized to edit term meta.'
 	);
 }
 
-// Invalid nonce should fail for admin.
+// Admin should be authorized to edit term meta.
 wp_set_current_user( $admin_user_id );
-$_POST = array(
-	\ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_NONCE_NAME => 'invalid_nonce',
-	'cat_alternative_names'                     => 'BadNonce',
-);
-$admin_handler->save_alternatives_metabox( $secured_post_id );
-$saved = get_post_meta( $secured_post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_META_KEY, true );
+$allowed = $admin_handler->can_edit_term_meta( false, \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_META_KEY, $secured_post_id, $admin_user_id );
 cat_assert(
-	empty( $saved ),
-	'Security test failed: invalid nonce should block write.'
+	true === $allowed,
+	'Security test failed: administrator should be authorized to edit term meta.'
 );
 
-// Valid admin nonce should succeed.
-$_POST = array(
-	\ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_NONCE_NAME => wp_create_nonce( \ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_NONCE_ACTION ),
-	'cat_alternative_names'                     => 'Valid Name, VN',
+// Test 7: Meta sanitizers should enforce field rules.
+$sanitized_alternatives = $admin_handler->sanitize_alternatives_meta(
+	array(
+		' WP ',
+		'WP',
+		'a',
+		'API',
+	)
 );
-$admin_handler->save_alternatives_metabox( $secured_post_id );
-$saved = get_post_meta( $secured_post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::ALTERNATIVES_META_KEY, true );
 cat_assert(
-	is_array( $saved ) && in_array( 'Valid Name', $saved, true ) && in_array( 'VN', $saved, true ),
-	'Security test failed: valid admin write did not persist expected alternatives.'
+	array( 'WP', 'API' ) === $sanitized_alternatives,
+	'Sanitizer test failed: alternatives sanitizer did not normalize values as expected.'
+);
+$raw_tooltip       = "Tooltip first line\r\n<script>alert('x')</script>";
+$sanitized_tooltip = $admin_handler->sanitize_tooltip_meta( $raw_tooltip );
+cat_assert(
+	strpos( $sanitized_tooltip, "\r" ) === false && strpos( $sanitized_tooltip, "<script>alert('x')</script>" ) !== false,
+	'Sanitizer test failed: tooltip sanitizer should normalize line endings without stripping literal text.'
 );
 
-// Cleanup.
-$_POST = array();
+// Test 8: One-time migration copies legacy post_content only when tooltip meta is empty.
+delete_option( \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_MIGRATION_OPTION_KEY );
+$migration_source_id = cat_create_term( 'Migration Term', 'Legacy content for migration.', array(), '' );
+$test_post_ids[]     = $migration_source_id;
+$migration_target_id = cat_create_term( 'Migration Already Set', 'Should not overwrite.', array(), 'Existing tooltip text.' );
+$test_post_ids[]     = $migration_target_id;
+$admin_handler->maybe_run_tooltip_migration();
+
+$migrated_tooltip = get_post_meta( $migration_source_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_META_KEY, true );
+cat_assert(
+	'Legacy content for migration.' === $migrated_tooltip,
+	'Migration test failed: empty tooltip meta should be populated from legacy post_content.'
+);
+$preserved_tooltip = get_post_meta( $migration_target_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_META_KEY, true );
+cat_assert(
+	'Existing tooltip text.' === $preserved_tooltip,
+	'Migration test failed: existing tooltip meta should not be overwritten.'
+);
+
+// Migration should not run again once option is set.
+wp_update_post(
+	array(
+		'ID'           => $migration_source_id,
+		'post_content' => 'Updated post content after migration.',
+	)
+);
+$admin_handler->maybe_run_tooltip_migration();
+$migrated_tooltip_after_second_run = get_post_meta( $migration_source_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_META_KEY, true );
+cat_assert(
+	'Legacy content for migration.' === $migrated_tooltip_after_second_run,
+	'Migration test failed: migration should be idempotent and skip second run.'
+);
+
+// Test 9: Public post toggle disables/enables glossary auto-linking.
+$toggle_post_id  = cat_create_public_post( 'Toggle Test Post', 'WordPress remains plain text when disabled.' );
+$test_post_ids[] = $toggle_post_id;
+
+update_post_meta( $toggle_post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::DISABLE_AUTOLINKING_META_KEY, true );
+$toggle_post = get_post( $toggle_post_id );
+setup_postdata( $toggle_post );
+$filtered_toggle_disabled = apply_filters( 'the_content', 'WordPress should not be linked while disabled.' );
+cat_assert(
+	strpos( $filtered_toggle_disabled, 'cat-glossary-item-container' ) === false,
+	'Auto-link toggle test failed: expected no glossary links when disabled.'
+);
+
+update_post_meta( $toggle_post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::DISABLE_AUTOLINKING_META_KEY, false );
+$toggle_post = get_post( $toggle_post_id );
+setup_postdata( $toggle_post );
+$filtered_toggle_enabled = apply_filters( 'the_content', 'WordPress should be linked while enabled.' );
+cat_assert(
+	strpos( $filtered_toggle_enabled, 'cat-glossary-item-container' ) !== false,
+	'Auto-link toggle test failed: expected glossary links when enabled.'
+);
+
+// Test 10: Term content does not self-link but still links other glossary terms.
+$self_term_id    = cat_create_term( 'Objective', 'Objective mentions WordPress.', array(), 'Objective tooltip.' );
+$test_post_ids[] = $self_term_id;
+$self_term_post  = get_post( $self_term_id );
+setup_postdata( $self_term_post );
+$filtered_self_term = apply_filters( 'the_content', 'Objective mentions WordPress.' );
+
+cat_assert(
+	strpos( $filtered_self_term, '>Objective<' ) === false,
+	'Self-link test failed: term title should not be converted into a self-link trigger.'
+);
+cat_assert(
+	strpos( $filtered_self_term, 'Objective mentions' ) !== false,
+	'Self-link test failed: original self-term text should remain plain text.'
+);
+cat_assert(
+	strpos( $filtered_self_term, '>WordPress<' ) !== false && strpos( $filtered_self_term, 'cat-glossary-item-container' ) !== false,
+	'Self-link test failed: other glossary terms should still be linked in term content.'
+);
+
+wp_reset_postdata();
 foreach ( $test_post_ids as $test_post_id ) {
 	wp_delete_post( (int) $test_post_id, true );
 }
@@ -257,6 +391,7 @@ foreach ( $test_post_ids as $test_post_id ) {
 if ( ! is_wp_error( $subscriber_user ) ) {
 	wp_delete_user( (int) $subscriber_user );
 }
+delete_option( \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_MIGRATION_OPTION_KEY );
 
 if ( ! empty( $failures ) ) {
 	echo "Behavior/Security tests FAILED:\n";

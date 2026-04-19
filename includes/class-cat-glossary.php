@@ -35,7 +35,7 @@ class Cat_Glossary {
 	 * Construct the glossary object.
 	 */
 	public function __construct() {
-		add_action( 'save_post_cat_glossary', array( $this, 'clear_cache' ) );
+		add_action( 'save_post_' . Cat_Glossary_Admin::POST_TYPE, array( $this, 'clear_cache' ) );
 	}
 
 	/**
@@ -136,11 +136,12 @@ class Cat_Glossary {
 	 */
 	protected function post_to_glossary_item( WP_Post $post ) {
 		$alternatives = get_post_meta( $post->ID, Cat_Glossary_Admin::ALTERNATIVES_META_KEY, true );
+		$tooltip      = get_post_meta( $post->ID, Cat_Glossary_Admin::TOOLTIP_META_KEY, true );
 
 		return (object) array(
 			'id'           => $post->ID,
 			'name'         => trim( $post->post_title ),
-			'description'  => trim( $post->post_content ),
+			'description'  => is_string( $tooltip ) ? trim( $tooltip ) : '',
 			'alternatives' => is_array( $alternatives ) ? $alternatives : array(),
 		);
 	}

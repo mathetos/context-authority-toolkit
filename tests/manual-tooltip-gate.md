@@ -11,43 +11,73 @@ This gate is a strict human verification replacement for automated browser tests
 
 Run each scenario exactly as written. Any failed scenario is a gate FAIL.
 
-1. Open on click/tap
+1. Block editor sidebar fields
+   - Action: Open any `term` post in wp-admin editor and inspect the document settings sidebar.
+   - PASS when:
+     - Editor is block editor (not classic metabox screen).
+     - Sidebar has `Term Settings` panel.
+     - Panel includes `Alternate Names` and `Tooltip content` fields.
+
+2. Sidebar field persistence
+   - Action: Save a term with updated `Alternate Names` and multiline `Tooltip content`, then reload editor.
+   - PASS when:
+     - Both values persist exactly after reload.
+
+3. Public post auto-link toggle
+   - Action: In a public post editor (for example `post` or `page`), enable `Disable glossary auto-linking`, save, and view frontend content containing glossary terms.
+   - PASS when:
+     - Glossary terms are not auto-linked while toggle is enabled.
+     - After disabling the toggle and saving again, glossary terms are auto-linked.
+
+4. Open on click/tap
    - Action: Click the first linked glossary term.
    - PASS when:
      - Popover appears.
      - Popover includes `Learn more` link text.
      - `Learn more` opens that term's public URL.
 
-2. Single-open invariant
+5. Single-open invariant
    - Action: Open first term popover, then click second term.
    - PASS when:
      - Second popover opens.
      - First popover closes.
 
-3. Outside click close
+6. Outside click close
    - Action: Open a popover, then click outside any glossary trigger/panel.
    - PASS when:
      - Open popover closes.
 
-4. Escape close
+7. Escape close
    - Action: Open a popover, press `Esc`.
    - PASS when:
      - Open popover closes.
 
-5. Keyboard focus behavior
+8. Keyboard focus behavior
    - Action: Tab to a glossary term trigger and press `Enter`.
    - PASS when:
      - Popover opens.
      - Tabbing can reach `Learn more`.
      - Moving focus outside the active popover closes it.
 
-6. Hover intent behavior (desktop)
+9. Hover intent behavior (desktop)
    - Action: Hover a glossary term for ~0.2 seconds.
    - PASS when:
      - Popover opens with a slight delay.
      - Moving pointer away closes it after a short delay.
 
-7. Legacy link regression
+10. Tooltip text-only regression
+   - Action: Enter HTML-like text in `Tooltip content` (for example `<strong>Example</strong>`) and view tooltip on frontend.
+   - PASS when:
+     - Tooltip shows literal text (not formatted HTML).
+     - Line breaks entered in sidebar are preserved visually.
+
+11. Term self-link regression
+   - Action: On a term single page, include that term title in content alongside another glossary term.
+   - PASS when:
+     - The term does not auto-link to itself.
+     - Other glossary terms still auto-link in that content.
+
+12. Legacy link regression
    - Action: Inspect popover content in browser UI.
    - PASS when:
      - `Edit Term` does not appear in frontend popovers.

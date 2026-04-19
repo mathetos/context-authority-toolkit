@@ -47,3 +47,26 @@ function cat_toolkit_bootstrap() {
 	new Cat_Glossary_Handler( $glossary );
 }
 add_action( 'plugins_loaded', __NAMESPACE__ . '\\cat_toolkit_bootstrap' );
+
+/**
+ * Handle plugin activation tasks.
+ *
+ * @return void
+ */
+function cat_toolkit_activate() {
+	$admin = new Cat_Glossary_Admin();
+	$admin->register_post_type();
+	$admin->register_post_meta();
+	flush_rewrite_rules();
+}
+register_activation_hook( CAT_TOOLKIT_FILE, __NAMESPACE__ . '\\cat_toolkit_activate' );
+
+/**
+ * Handle plugin deactivation tasks.
+ *
+ * @return void
+ */
+function cat_toolkit_deactivate() {
+	flush_rewrite_rules();
+}
+register_deactivation_hook( CAT_TOOLKIT_FILE, __NAMESPACE__ . '\\cat_toolkit_deactivate' );
