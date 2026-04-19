@@ -45,6 +45,30 @@ jobs:
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
           echo "root_dir=${ROOT_DIR}" >> "$GITHUB_OUTPUT"
 
+      - name: Generate changelog body
+        id: changelog
+        shell: bash
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [[ -z "$PREV_TAG" ]]; then
+            CHANGES=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGES=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          if [[ -z "$CHANGES" ]]; then
+            CHANGES="- No changes detected"
+          fi
+
+          CHANGELOG_MD="## Changes in v${{ steps.vars.outputs.version }}
+
+${CHANGES}"
+
+          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG_MD" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Create ZIP package
         id: package
         shell: bash
@@ -79,8 +103,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.vars.outputs.raw_version }}
-          generate_release_notes: true
-          append_body: true
+          body: ${{ steps.changelog.outputs.changelog }}
           files: ${{ steps.package.outputs.zip_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
