@@ -1,8 +1,5 @@
 name: Build Release ZIP
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 on:
   release:
     types: [created]
@@ -20,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -48,6 +45,8 @@ jobs:
       - name: Generate changelog body
         id: changelog
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.vars.outputs.version }}
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
@@ -61,13 +60,14 @@ jobs:
             CHANGES="- No changes detected"
           fi
 
-          CHANGELOG_MD="## Changes in v${{ steps.vars.outputs.version }}
+          NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+          {
+            echo "## Changes in v${RELEASE_VERSION}"
+            echo
+            echo "${CHANGES}"
+          } > "${NOTES_FILE}"
 
-${CHANGES}"
-
-          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$CHANGELOG_MD" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "notes_file=${NOTES_FILE}" >> "$GITHUB_OUTPUT"
 
       - name: Create ZIP package
         id: package
@@ -93,17 +93,26 @@ ${CHANGES}"
           echo "zip_path=${{ steps.vars.outputs.zip_name }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload ZIP as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: context-authority-toolkit-${{ steps.vars.outputs.version }}
           path: ${{ steps.package.outputs.zip_path }}
 
       - name: Create or update GitHub release and attach ZIP
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.vars.outputs.raw_version }}
-          body: ${{ steps.changelog.outputs.changelog }}
-          files: ${{ steps.package.outputs.zip_path }}
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.vars.outputs.raw_version }}"
+          TITLE="${TAG#v}"
+          NOTES_FILE="${{ steps.changelog.outputs.notes_file }}"
+          ZIP_PATH="${{ steps.package.outputs.zip_path }}"
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release edit "${TAG}" --notes-file "${NOTES_FILE}" --title "${TITLE}"
+          else
+            gh release create "${TAG}" --title "${TITLE}" --notes-file "${NOTES_FILE}"
+          fi
+
+          gh release upload "${TAG}" "${ZIP_PATH}" --clobber
