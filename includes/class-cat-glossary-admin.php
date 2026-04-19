@@ -72,8 +72,8 @@ class Cat_Glossary_Admin {
 				'labels'       => array(
 					'name'               => __( 'Terms', 'context-authority-toolkit' ),
 					'singular_name'      => __( 'Glossary Term', 'context-authority-toolkit' ),
-					'add_new'            => __( 'Add New', 'context-authority-toolkit' ),
-					'add_new_item'       => __( 'Add New Glossary Term', 'context-authority-toolkit' ),
+					'add_new'            => __( 'Add New Term', 'context-authority-toolkit' ),
+					'add_new_item'       => __( 'Add New Term', 'context-authority-toolkit' ),
 					'edit_item'          => __( 'Edit Glossary Term', 'context-authority-toolkit' ),
 					'new_item'           => __( 'New Glossary Term', 'context-authority-toolkit' ),
 					'view_item'          => __( 'View Glossary Term', 'context-authority-toolkit' ),
@@ -86,6 +86,7 @@ class Cat_Glossary_Admin {
 				'public'       => true,
 				'show_ui'      => true,
 				'show_in_rest' => true,
+				'menu_icon'    => CAT_TOOLKIT_URL . 'assets/images/term-icon.svg',
 				'hierarchical' => false,
 				'rewrite'      => array(
 					'slug'       => self::POST_TYPE,
