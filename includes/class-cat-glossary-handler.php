@@ -23,11 +23,18 @@ class Cat_Glossary_Handler {
 	private $glossary;
 
 	/**
-	 * Tracks terms already replaced in current content.
+	 * Tracks linked glossary mentions in current content.
 	 *
-	 * @var bool[]
+	 * @var int
 	 */
-	private $processed = array();
+	private $linked_mentions_count = 0;
+
+	/**
+	 * Maximum glossary mentions to auto-link in one content payload.
+	 *
+	 * @var int
+	 */
+	const MAX_LINKED_MENTIONS = 2;
 
 	/**
 	 * Incrementing instance counter for unique trigger/panel IDs.
@@ -73,11 +80,10 @@ class Cat_Glossary_Handler {
 			return $matches[0];
 		}
 
-		$processed_key = strtolower( $found_text );
-		if ( ! empty( $this->processed[ $processed_key ] ) ) {
+		if ( $this->linked_mentions_count >= self::MAX_LINKED_MENTIONS ) {
 			return $matches[0];
 		}
-		$this->processed[ $processed_key ] = true;
+		$this->linked_mentions_count++;
 		$this->instance_counter++;
 
 		$description_text = is_string( $glossary_item->description ) ? trim( $glossary_item->description ) : '';
@@ -85,7 +91,7 @@ class Cat_Glossary_Handler {
 		$learn_more_url = get_permalink( $glossary_item->id );
 		if ( ! empty( $learn_more_url ) ) {
 			$description_html .= sprintf(
-				'<br /><a class="cat-glossary-item-link" href="%1$s">%2$s</a>',
+				'<br /><a class="cat-glossary-item-link" href="%1$s" rel="help">%2$s</a>',
 				esc_url( $learn_more_url ),
 				esc_html__( 'Learn more', 'context-authority-toolkit' )
 			);
@@ -133,47 +139,56 @@ class Cat_Glossary_Handler {
 			return $content;
 		}
 
-		$this->processed = array();
-		$this->instance_counter = 0;
-		$textarr         = wp_html_split( $content );
-		$ignore_elements = array( 'code', '/code', 'a', '/a', 'pre', '/pre', 'dt', '/dt', 'option', '/option' );
-		$inside_block    = array();
+		$this->linked_mentions_count = 0;
+		$this->instance_counter      = 0;
+		$textarr                     = wp_html_split( $content );
+		$ignore_elements             = array( 'code', 'a', 'pre', 'dt', 'option' );
+		$allowed_elements            = array( 'p', 'li' );
+		$inside_block                = array();
+		$inside_allowed              = array();
 
 		foreach ( $textarr as &$element ) {
 			if ( 0 === strpos( $element, '<' ) ) {
-				$offset     = 1;
-				$is_end_tag = false;
+				$tag_name   = $this->get_tag_name( $element );
+				$is_end_tag = ( 1 === strpos( $element, '/' ) );
 
-				if ( 1 === strpos( $element, '/' ) ) {
-					$offset     = 2;
-					$is_end_tag = true;
+				if ( '' === $tag_name ) {
+					continue;
 				}
 
-				preg_match( '/^.+(\b|\n|$)/U', substr( $element, $offset ), $matches );
-				if ( $matches && in_array( $matches[0], $ignore_elements, true ) ) {
+				if ( in_array( $tag_name, $ignore_elements, true ) ) {
 					if ( ! $is_end_tag ) {
-						array_unshift( $inside_block, $matches[0] );
-					} elseif ( $inside_block && $matches[0] === $inside_block[0] ) {
+						array_unshift( $inside_block, $tag_name );
+					} elseif ( $inside_block && $tag_name === $inside_block[0] ) {
 						array_shift( $inside_block );
 					}
 					continue;
 				}
 
-				if ( $matches && 'span' === $matches[0] && false !== strpos( $element, 'cat-glossary-item-container' ) ) {
+				if ( 'span' === $tag_name && false !== strpos( $element, 'cat-glossary-item-container' ) ) {
 					if ( ! $is_end_tag ) {
-						array_unshift( $inside_block, $matches[0] );
-					} elseif ( $inside_block && $matches[0] === $inside_block[0] ) {
+						array_unshift( $inside_block, $tag_name );
+					} elseif ( $inside_block && $tag_name === $inside_block[0] ) {
 						array_shift( $inside_block );
 					}
 					continue;
 				}
+
+				if ( in_array( $tag_name, $allowed_elements, true ) ) {
+					if ( ! $is_end_tag ) {
+						array_unshift( $inside_allowed, $tag_name );
+					} elseif ( $inside_allowed && $tag_name === $inside_allowed[0] ) {
+						array_shift( $inside_allowed );
+					}
+				}
+				continue;
 			}
 
 			if ( strpos( $element, 'http://' ) !== false || strpos( $element, 'https://' ) !== false || strpos( $element, 'www.' ) !== false ) {
 				continue;
 			}
 
-			if ( empty( $inside_block ) ) {
+			if ( empty( $inside_block ) && ! empty( $inside_allowed ) && $this->linked_mentions_count < self::MAX_LINKED_MENTIONS ) {
 				$element = preg_replace_callback( $regex, array( $this, 'glossary_item_hovercard' ), $element );
 			}
 		}
@@ -199,6 +214,20 @@ class Cat_Glossary_Handler {
 		}
 
 		return 0;
+	}
+
+	/**
+	 * Extract normalized tag name from an HTML fragment.
+	 *
+	 * @param string $element HTML fragment from wp_html_split.
+	 * @return string
+	 */
+	private function get_tag_name( $element ) {
+		if ( ! preg_match( '#^<\s*/?\s*([a-zA-Z0-9:-]+)#', $element, $matches ) ) {
+			return '';
+		}
+
+		return strtolower( $matches[1] );
 	}
 
 	/**

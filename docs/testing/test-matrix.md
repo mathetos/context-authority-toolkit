@@ -17,6 +17,13 @@ This file defines current test ownership and coverage boundaries.
 - Browser automation is intentionally out of scope in this repository.
 - Tooltip interaction coverage remains a manual quality gate.
 
+## Behavior harness must assert
+
+- Semantic wrapper accessibility linkage remains intact (`article[aria-labelledby]` linked to `dfn#cat-defined-term-name-*`).
+- Schema canonical builder preserves `sameAs` and `citation` parity for all transport paths.
+- Invalid source/meta URLs are rejected unless valid public `http/https` URLs.
+- Citation `datePublished` output remains strict `YYYY-MM-DD`.
+
 ## Test agent ownership boundaries
 
 - **May edit by default:**

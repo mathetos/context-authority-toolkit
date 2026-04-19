@@ -15,6 +15,8 @@ Historical run logs in `docs/evidence/` are archival references, not executable 
 
 ## Commands
 
+`tests/run-behavior-tests.php` is an executable harness for `wp eval-file`, not production plugin runtime code. It is intentionally excluded from WPCS style enforcement to avoid false-positive noise; quality is enforced by execution and assertions in Gate 2.
+
 ### 1) PHP syntax gate
 
 ```powershell
@@ -27,6 +29,11 @@ Get-ChildItem .\includes\*.php | ForEach-Object { php -l $_.FullName }
 ```powershell
 wp eval-file .\tests\run-behavior-tests.php
 ```
+
+The behavior harness is expected to cover schema/accessibility invariants, including:
+- semantic wrapper linkage (`aria-labelledby` tied to the term `dfn` id),
+- canonical schema parity (`sameAs` and `citation` preservation),
+- strict URL/date sanitization behavior for source metadata.
 
 ### 3) Plugin Check gate
 

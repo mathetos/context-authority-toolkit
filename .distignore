@@ -1,0 +1,10 @@
+.git/
+.github/
+.gitignore
+
+docs/
+test-results/
+tests/
+
+*.md
+phpcs.xml.dist

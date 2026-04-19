@@ -36,6 +36,16 @@ class Cat_Glossary_Admin {
 	const DISABLE_AUTOLINKING_META_KEY = 'cat_disable_autolinking';
 
 	/**
+	 * sameAs entity links meta key.
+	 */
+	const SAME_AS_META_KEY = 'cat_same_as';
+
+	/**
+	 * Source citations repeater meta key.
+	 */
+	const SOURCES_META_KEY = 'cat_sources';
+
+	/**
 	 * Migration option key.
 	 */
 	const TOOLTIP_MIGRATION_OPTION_KEY = 'cat_tooltip_meta_migration_v1';
@@ -125,6 +135,62 @@ class Cat_Glossary_Admin {
 			)
 		);
 
+		register_post_meta(
+			self::POST_TYPE,
+			self::SAME_AS_META_KEY,
+			array(
+				'type'              => 'array',
+				'single'            => true,
+				'show_in_rest'      => array(
+					'schema' => array(
+						'type'    => 'array',
+						'items'   => array(
+							'type'   => 'string',
+							'format' => 'uri',
+						),
+						'default' => array(),
+					),
+				),
+				'sanitize_callback' => array( $this, 'sanitize_same_as_meta' ),
+				'auth_callback'     => array( $this, 'can_edit_term_meta' ),
+			)
+		);
+
+		register_post_meta(
+			self::POST_TYPE,
+			self::SOURCES_META_KEY,
+			array(
+				'type'              => 'array',
+				'single'            => true,
+				'show_in_rest'      => array(
+					'schema' => array(
+						'type'    => 'array',
+						'items'   => array(
+							'type'       => 'object',
+							'properties' => array(
+								'url'           => array(
+									'type'   => 'string',
+									'format' => 'uri',
+								),
+								'title'         => array(
+									'type' => 'string',
+								),
+								'publisher'     => array(
+									'type' => 'string',
+								),
+								'datePublished' => array(
+									'type' => 'string',
+								),
+							),
+						),
+						'default' => array(),
+					),
+				),
+				'sanitize_callback' => array( $this, 'sanitize_sources_meta' ),
+				'auth_callback'     => array( $this, 'can_edit_term_meta' ),
+			)
+		);
+
 		$this->register_public_post_meta();
 	}
 
@@ -188,6 +254,8 @@ class Cat_Glossary_Admin {
 				array(
 					'publicPostTypes'     => $post_types,
 					'disableAutolinkMeta' => self::DISABLE_AUTOLINKING_META_KEY,
+					'sameAsMeta'          => self::SAME_AS_META_KEY,
+					'sourcesMeta'         => self::SOURCES_META_KEY,
 				)
 			) . ';',
 			'before'
@@ -251,6 +319,127 @@ class Cat_Glossary_Admin {
 		$tooltip = preg_replace( "/\r\n|\r/", "\n", $tooltip );
 
 		return trim( $tooltip );
+	}
+
+	/**
+	 * Sanitize sameAs meta values.
+	 *
+	 * @param mixed $same_as Raw sameAs list.
+	 * @return string[]
+	 */
+	public function sanitize_same_as_meta( $same_as ) {
+		if ( is_string( $same_as ) ) {
+			$same_as = preg_split( '/[\r\n,]+/', $same_as );
+		}
+
+		if ( ! is_array( $same_as ) ) {
+			return array();
+		}
+
+		$normalized = array();
+		foreach ( $same_as as $url ) {
+			$url = $this->sanitize_public_url( $url );
+			if ( '' !== $url ) {
+				$normalized[] = $url;
+			}
+		}
+
+		return array_values( array_unique( $normalized ) );
+	}
+
+	/**
+	 * Sanitize source citation repeater data.
+	 *
+	 * @param mixed $sources Raw sources.
+	 * @return array
+	 */
+	public function sanitize_sources_meta( $sources ) {
+		if ( ! is_array( $sources ) ) {
+			return array();
+		}
+
+		$sanitized = array();
+		foreach ( $sources as $source ) {
+			if ( ! is_array( $source ) ) {
+				continue;
+			}
+
+			$url = isset( $source['url'] ) ? $this->sanitize_public_url( $source['url'] ) : '';
+			if ( '' === $url ) {
+				continue;
+			}
+
+			$entry = array(
+				'url' => $url,
+			);
+
+			if ( isset( $source['title'] ) ) {
+				$entry['title'] = sanitize_text_field( $source['title'] );
+			}
+
+			if ( isset( $source['publisher'] ) ) {
+				$entry['publisher'] = sanitize_text_field( $source['publisher'] );
+			}
+
+			if ( ! empty( $source['datePublished'] ) ) {
+				$published_date = $this->sanitize_iso_date( $source['datePublished'] );
+				if ( '' !== $published_date ) {
+					$entry['datePublished'] = $published_date;
+				}
+			}
+
+			$sanitized[] = $entry;
+		}
+
+		return $sanitized;
+	}
+
+	/**
+	 * Sanitize public URLs for schema fields.
+	 *
+	 * @param mixed $url Raw URL value.
+	 * @return string
+	 */
+	private function sanitize_public_url( $url ) {
+		$url = esc_url_raw( trim( (string) $url ), array( 'http', 'https' ) );
+		if ( '' === $url ) {
+			return '';
+		}
+
+		if ( ! wp_http_validate_url( $url ) ) {
+			return '';
+		}
+
+		return $url;
+	}
+
+	/**
+	 * Sanitize strict ISO-8601 date (YYYY-MM-DD).
+	 *
+	 * @param mixed $date Raw date value.
+	 * @return string
+	 */
+	private function sanitize_iso_date( $date ) {
+		$date = trim( (string) $date );
+		if ( '' === $date ) {
+			return '';
+		}
+
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+			return '';
+		}
+
+		$parsed = \DateTime::createFromFormat( '!Y-m-d', $date, new \DateTimeZone( 'UTC' ) );
+		$errors = \DateTime::getLastErrors();
+		if (
+			false === $parsed ||
+			( is_array( $errors ) && ! empty( $errors['warning_count'] ) ) ||
+			( is_array( $errors ) && ! empty( $errors['error_count'] ) )
+		) {
+			return '';
+		}
+
+		return $parsed->format( 'Y-m-d' );
 	}
 
 	/**

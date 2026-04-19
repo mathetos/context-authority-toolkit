@@ -9,7 +9,8 @@ This document defines live behavior contracts that must remain true unless a cha
 - Longer terms match case-insensitively.
 - Longer terms must be prioritized to avoid shorter-term collisions.
 - Terms are not wrapped inside excluded HTML contexts (for example `a`, `code`, `pre`, `option`, existing glossary container markup).
-- Repeated appearances of the same matched term in one content string are wrapped once.
+- Auto-linking only occurs within `p` and `li` elements.
+- At most two glossary mentions are wrapped per content payload.
 - When `cat_disable_autolinking` is enabled for a post, no glossary auto-linking is applied in that post context.
 - Term single content never auto-links its own term title; other glossary terms may still be linked.
 
@@ -29,7 +30,34 @@ This document defines live behavior contracts that must remain true unless a cha
 - Tooltip description is sourced from `cat_tooltip_content` meta (not term `post_content`).
 - Tooltip description treats HTML as plain text and supports line breaks.
 - Frontend content includes a user-facing `Learn more` link to the term permalink.
+- `Learn more` link includes `rel="help"` to signal definitional context.
 - Legacy frontend text `Edit Term` must not appear.
+
+## Schema and transport contract
+
+- Context & Authority Toolkit remains the canonical owner of `DefinedTerm` data content.
+- Canonical schema is mapped from CAT term title/content/meta before any transport adapter runs.
+- `sameAs`, `citation`, and `inDefinedTermSet` must be preserved across all delivery modes.
+- URL-bearing schema fields (`sameAs`, citation `url`) only allow valid public `http/https` URLs.
+- Citation `datePublished` accepts strict ISO format (`YYYY-MM-DD`) only.
+- Delivery mode is controlled by CAT settings:
+  - `auto`: inject into detected SEO plugin transport when available
+  - `standalone`: print JSON-LD in `wp_head`
+  - `off`: suppress schema output
+- Supported transport integrations:
+  - Yoast via `wpseo_schema_graph_pieces`
+  - Rank Math via `rank_math/json_ld`
+  - SEOPress via documented schema filter path
+
+## Semantic and read-aloud contract
+
+- Term single output includes semantic microdata redundancy:
+  - `itemscope itemtype="https://schema.org/DefinedTerm"`
+  - `article[aria-labelledby]` bound to the term name element id
+  - `dfn#cat-defined-term-name-{term_id}[itemprop="name"]`
+  - `itemprop="description"` with `role="definition"`
+- Read-aloud text is sanitized to remove shortcodes/control symbols and normalize whitespace.
+- Read-aloud text can be customized through `context_authority_toolkit_schema_read_aloud_text`.
 
 ## Interaction contract
 

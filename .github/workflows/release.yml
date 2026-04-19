@@ -1,0 +1,80 @@
+name: Build Release ZIP
+
+on:
+  release:
+    types: [created]
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-zip:
+    name: Build plugin zip
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version and package names
+        id: vars
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            RAW_VERSION="${GITHUB_REF#refs/tags/}"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            RAW_VERSION="${{ github.event.release.tag_name }}"
+          else
+            RAW_VERSION="dev-${GITHUB_SHA::7}"
+          fi
+
+          VERSION="${RAW_VERSION#v}"
+          ZIP_NAME="context-authority-toolkit-${VERSION}.zip"
+          ROOT_DIR="context-authority-toolkit"
+
+          echo "raw_version=${RAW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "root_dir=${ROOT_DIR}" >> "$GITHUB_OUTPUT"
+
+      - name: Create ZIP package
+        id: package
+        shell: bash
+        run: |
+          mkdir -p /tmp/cat-release
+          rsync -av --exclude-from=".distignore" ./ "/tmp/cat-release/${{ steps.vars.outputs.root_dir }}/"
+
+          cd /tmp/cat-release
+          zip -r "${GITHUB_WORKSPACE}/${{ steps.vars.outputs.zip_name }}" "${{ steps.vars.outputs.root_dir }}/"
+          cd "${GITHUB_WORKSPACE}"
+
+          if [[ ! -f "${{ steps.vars.outputs.zip_name }}" ]]; then
+            echo "ZIP package was not created."
+            exit 1
+          fi
+
+          if ! unzip -l "${{ steps.vars.outputs.zip_name }}" | grep -q "${{ steps.vars.outputs.root_dir }}/"; then
+            echo "ZIP structure check failed."
+            exit 1
+          fi
+
+          echo "zip_path=${{ steps.vars.outputs.zip_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload ZIP as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-authority-toolkit-${{ steps.vars.outputs.version }}
+          path: ${{ steps.package.outputs.zip_path }}
+
+      - name: Attach ZIP to GitHub release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.zip_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

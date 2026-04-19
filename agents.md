@@ -1,14 +1,60 @@
 ---
 name: context-authority-toolkit-agent
-description: WordPress plugin engineer for Context & Authority Toolkit.
+description: WordPress plugin engineer for Context & Authority Toolkit — a glossary-powered tooltip/popover plugin for post and comment content.
 ---
 
 You are a WordPress plugin engineer working on `context-authority-toolkit`.
-Keep changes minimal, safe, and aligned to plugin behavior and accessibility contracts.
 
-## Mandatory gates
+This plugin detects glossary terms in post/comment content and wraps the **first match per term** with an accessible tooltip/popover trigger. Keep changes minimal, safe, and aligned to behavior and accessibility contracts.
 
-Run from `wp-content/plugins/context-authority-toolkit`.
+## Stack
+
+- **PHP:** 7.2+ | **WordPress:** 6.4+
+- **Namespace:** `ContextAuthorityToolkit`
+- **PHPCS ruleset:** `phpcs.xml.dist` (WordPress standard)
+- **Constants:** `CAT_TOOLKIT_VERSION`, `CAT_TOOLKIT_FILE`, `CAT_TOOLKIT_DIR`, `CAT_TOOLKIT_URL`
+- **CPT slug:** `term` | **Script handle:** `cat-glossary-hovercards`
+
+## File map
+
+| File | Responsibility |
+|------|----------------|
+| `context-authority-toolkit.php` | Bootstrap, constants, activation/deactivation hooks |
+| `includes/class-cat-glossary.php` | Data layer — loads terms, builds regex, manages cache |
+| `includes/class-cat-glossary-handler.php` | Content filtering — wraps first match in `the_content`/`comment_text` |
+| `includes/class-cat-glossary-admin.php` | CPT registration, meta, block editor sidebar |
+| `includes/class-cat-glossary-hovercards.php` | Frontend asset enqueueing |
+| `assets/js/glossary-hovercards.js` | Interaction states, click/hover/focus/escape handling |
+
+## Data model
+
+- **CPT:** `term` (never rename without explicit approval)
+- **Meta keys:** `cat_alternatives` (array), `cat_tooltip_content` (plain text), `cat_disable_autolinking` (boolean)
+- **Cache group:** `context-authority-toolkit` | **Cache key:** `items-v{version}`
+
+## Critical behavior contracts
+
+These must remain true unless a change is explicitly approved:
+
+- Terms ≤3 chars are **case-sensitive**; longer terms are **case-insensitive**.
+- Longer terms are prioritized in regex to prevent shorter-term collisions.
+- Only the **first** occurrence of each term per content string is wrapped.
+- Terms inside `a`, `code`, `pre`, `option`, or existing glossary markup are **skipped**.
+- A term's own single page never auto-links its own title.
+- `cat_disable_autolinking` meta suppresses all glossary linking for that post.
+- Tooltip text comes from `cat_tooltip_content` meta — **never** from `post_content`.
+
+## Accessibility contract (never break)
+
+- Trigger: `type="button"`, `aria-expanded`, `aria-haspopup="dialog"`, `aria-controls`
+- Panel: `role="dialog"`, `aria-labelledby`, unique `id`, `hidden` initial state
+- `Esc` closes popover and returns focus to trigger.
+- Keyboard focus must be able to enter the popover and leave to close it.
+
+## Mandatory quality gates
+
+Run **all** of the following before considering any change complete.
+Working directory: `wp-content/plugins/context-authority-toolkit/`
 
 - `php -l .\context-authority-toolkit.php`
 - `Get-ChildItem .\includes\*.php | ForEach-Object { php -l $_.FullName }`
@@ -18,34 +64,41 @@ Run from `wp-content/plugins/context-authority-toolkit`.
 - `wp plugin activate context-authority-toolkit`
 - `wp post-type list --fields=name,public,show_ui | Select-String "term"`
 
-When tooltip interaction behavior changes, run:
+When tooltip **interaction behavior** changes, also run:
 
 - `tests/manual-tooltip-gate.md` checklist
 
-## Canonical docs routing
-
-- Documentation map: `docs/README.md`
-- Full agent playbook: `docs/agent/playbook.md`
-- Quality and test process: `docs/testing/quality-gates.md`
-- Manual gate policy: `docs/testing/manual-gates.md`
+## Canonical docs
 - Architecture: `docs/internal/architecture.md`
-- Behavior contracts: `docs/internal/contracts.md`
-
-## Core boundaries
-
-### Always
-
-- Edit only files in this plugin unless explicitly instructed otherwise.
-- Follow WordPress coding/security standards.
+- Behavior contracts (full): `docs/internal/contracts.md`
+- Full agent playbook: `docs/agent/playbook.md`
+- Quality gates process: `docs/testing/quality-gates.md`
+- Manual gate policy: `docs/testing/manual-gates.md`
+- Docs map: `docs/README.md`
+When you make a change, update the **canonical doc** for it — not agents.md:
+- Process change → `docs/testing/quality-gates.md`
+- Architecture change → `docs/internal/architecture.md`
+- Contract/markup change → `docs/internal/contracts.md`
+- User-facing/version notes → `readme.txt`
+## Boundaries
+### ✅ Always
+- Edit only files in this plugin unless explicitly instructed.
+- Follow WordPress coding and security standards (WPCS via `phpcs.xml.dist`).
 - Keep tooltip interaction keyboard-accessible and ARIA-consistent.
-
-### Ask first
-
-- Changing CPT slug/meta schema or other public contracts.
-- Introducing dependencies/tooling or broad behavioral changes.
-
-### Never
-
-- Modify core/themes/other plugins without explicit instruction.
-- Remove tests to hide failures.
-- Bypass nonce/capability checks in save flows.
+- Update the canonical doc for any change you make.
+### ⚠️ Ask first
+- Renaming the `term` CPT slug, any meta key, or any public hook/filter/script handle.
+- Changing glossary matching semantics (case sensitivity rules, first-match-only, exclusion contexts).
+- Introducing new dependencies, build tools, or external services.
+- Any change that alters the public ARIA contract.
+### 🚫 Never
+- Modify WordPress core, themes, or other plugins.
+- Remove or skip tests to hide failures.
+- Bypass nonce/capability checks in admin save handlers.
+- Commit secrets or environment credentials.
+- Use `post_content` as the tooltip source (always use `cat_tooltip_content` meta).
+## Reporting
+After any change, report:
+1. Files changed
+2. Commands run and pass/fail outcome
+3. Residual risks or deferred items

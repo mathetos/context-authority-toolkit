@@ -137,12 +137,17 @@ class Cat_Glossary {
 	protected function post_to_glossary_item( WP_Post $post ) {
 		$alternatives = get_post_meta( $post->ID, Cat_Glossary_Admin::ALTERNATIVES_META_KEY, true );
 		$tooltip      = get_post_meta( $post->ID, Cat_Glossary_Admin::TOOLTIP_META_KEY, true );
+		$same_as      = get_post_meta( $post->ID, Cat_Glossary_Admin::SAME_AS_META_KEY, true );
+		$sources      = get_post_meta( $post->ID, Cat_Glossary_Admin::SOURCES_META_KEY, true );
 
 		return (object) array(
 			'id'           => $post->ID,
 			'name'         => trim( $post->post_title ),
 			'description'  => is_string( $tooltip ) ? trim( $tooltip ) : '',
 			'alternatives' => is_array( $alternatives ) ? $alternatives : array(),
+			'url'          => get_permalink( $post->ID ),
+			'same_as'      => is_array( $same_as ) ? $same_as : array(),
+			'sources'      => is_array( $sources ) ? $sources : array(),
 		);
 	}
 

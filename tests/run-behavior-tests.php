@@ -1,4 +1,5 @@
 <?php
+// phpcs:ignoreFile -- Executable wp eval-file behavior harness; procedural globals are intentional.
 /**
  * Behavior and security gate tests for Context & Authority Toolkit.
  *
@@ -21,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once ABSPATH . 'wp-admin/includes/user.php';
 
-if ( ! class_exists( '\\ContextAuthorityToolkit\\Cat_Glossary' ) || ! class_exists( '\\ContextAuthorityToolkit\\Cat_Glossary_Handler' ) || ! class_exists( '\\ContextAuthorityToolkit\\Cat_Glossary_Admin' ) ) {
+if ( ! class_exists( '\\ContextAuthorityToolkit\\Cat_Glossary' ) || ! class_exists( '\\ContextAuthorityToolkit\\Cat_Glossary_Handler' ) || ! class_exists( '\\ContextAuthorityToolkit\\Cat_Glossary_Admin' ) || ! class_exists( '\\ContextAuthorityToolkit\\Cat_SEO_Peacekeeper' ) ) {
 	echo "Plugin classes are unavailable. Ensure plugin is active before running tests.\n";
 	exit( 1 );
 }
@@ -63,10 +64,12 @@ function cat_count_occurrences( $haystack, $needle ) {
  * @param string   $single_content Single term page content.
  * @param string[] $alternatives   Alternatives list.
  * @param string   $tooltip        Tooltip text.
+ * @param string[] $same_as        sameAs links.
+ * @param array[]  $sources        Citation source rows.
  *
  * @return int
  */
-function cat_create_term( $name, $single_content, array $alternatives = array(), $tooltip = '' ) {
+function cat_create_term( $name, $single_content, array $alternatives = array(), $tooltip = '', array $same_as = array(), array $sources = array() ) {
 	$post_id = wp_insert_post(
 		array(
 			'post_type'    => \ContextAuthorityToolkit\Cat_Glossary_Admin::POST_TYPE,
@@ -82,6 +85,14 @@ function cat_create_term( $name, $single_content, array $alternatives = array(),
 
 	if ( ! is_wp_error( $post_id ) && '' !== $tooltip ) {
 		update_post_meta( $post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::TOOLTIP_META_KEY, $tooltip );
+	}
+
+	if ( ! is_wp_error( $post_id ) && ! empty( $same_as ) ) {
+		update_post_meta( $post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::SAME_AS_META_KEY, $same_as );
+	}
+
+	if ( ! is_wp_error( $post_id ) && ! empty( $sources ) ) {
+		update_post_meta( $post_id, \ContextAuthorityToolkit\Cat_Glossary_Admin::SOURCES_META_KEY, $sources );
 	}
 
 	return (int) $post_id;
@@ -127,6 +138,7 @@ wp_set_current_user( $admin_user_id );
 $admin_handler = new \ContextAuthorityToolkit\Cat_Glossary_Admin();
 $admin_handler->register_post_type();
 $admin_handler->register_post_meta();
+$seo_peacekeeper = new \ContextAuthorityToolkit\Cat_SEO_Peacekeeper();
 
 $test_post_ids = array();
 
@@ -173,11 +185,11 @@ cat_assert(
 	'Excluded tags test failed: code content should be untouched.'
 );
 
-// Test 4: A repeated term in same content should only be wrapped once.
+// Test 4: Auto-linking should cap total links per content to first two mentions.
 $filtered_repeat = apply_filters( 'the_content', 'WordPress WordPress WordPress' );
 cat_assert(
-	cat_count_occurrences( $filtered_repeat, 'cat-glossary-item-container' ) === 1,
-	'Single replacement test failed: repeated term should wrap only once per content.'
+	cat_count_occurrences( $filtered_repeat, 'cat-glossary-item-container' ) === 2,
+	'Link cap test failed: expected only first two mentions to be wrapped.'
 );
 
 // Test 5: Interactive popover markup contract and Learn more permalink link.
@@ -234,6 +246,10 @@ cat_assert(
 cat_assert(
 	strpos( $filtered_link, 'href="' . $expected_href . '"' ) !== false,
 	'Learn more link test failed: href does not match term permalink.'
+);
+cat_assert(
+	strpos( $filtered_link, 'class="cat-glossary-item-link" href="' . $expected_href . '" rel="help"' ) !== false,
+	'Learn more link test failed: expected rel="help" semantic relation on definition link.'
 );
 cat_assert(
 	strpos( $expected_href, '?post_type=' ) === false && strpos( $expected_href, '&p=' ) === false,
@@ -306,6 +322,35 @@ $sanitized_tooltip = $admin_handler->sanitize_tooltip_meta( $raw_tooltip );
 cat_assert(
 	strpos( $sanitized_tooltip, "\r" ) === false && strpos( $sanitized_tooltip, "<script>alert('x')</script>" ) !== false,
 	'Sanitizer test failed: tooltip sanitizer should normalize line endings without stripping literal text.'
+);
+$sanitized_same_as = $admin_handler->sanitize_same_as_meta(
+	array(
+		' https://example.com/a ',
+		'not-a-url',
+		'https://example.com/a',
+		'https://example.com/b',
+	)
+);
+cat_assert(
+	array( 'https://example.com/a', 'https://example.com/b' ) === $sanitized_same_as,
+	'Sanitizer test failed: sameAs sanitizer should keep only unique valid URLs.'
+);
+$sanitized_sources = $admin_handler->sanitize_sources_meta(
+	array(
+		array(
+			'url'           => 'https://example.com/source-a',
+			'title'         => 'Source A',
+			'publisher'     => 'Publisher A',
+			'datePublished' => '2025-01-05',
+		),
+		array(
+			'url' => '',
+		),
+	)
+);
+cat_assert(
+	1 === count( $sanitized_sources ) && 'https://example.com/source-a' === $sanitized_sources[0]['url'],
+	'Sanitizer test failed: source sanitizer should remove invalid rows and keep valid source entries.'
 );
 
 // Test 8: One-time migration copies legacy post_content only when tooltip meta is empty.
@@ -381,6 +426,105 @@ cat_assert(
 cat_assert(
 	strpos( $filtered_self_term, '>WordPress<' ) !== false && strpos( $filtered_self_term, 'cat-glossary-item-container' ) !== false,
 	'Self-link test failed: other glossary terms should still be linked in term content.'
+);
+
+// Test 11: Auto-linking should only run in paragraph and list item content.
+$scope_test_content = '<h2>WordPress</h2><p>WordPress appears in paragraph.</p><ul><li>API appears in list item.</li></ul>';
+$filtered_scope     = apply_filters( 'the_content', $scope_test_content );
+cat_assert(
+	strpos( $filtered_scope, '<h2>WordPress</h2>' ) !== false,
+	'Scope test failed: heading text should remain untouched.'
+);
+cat_assert(
+	cat_count_occurrences( $filtered_scope, 'cat-glossary-item-container' ) === 2,
+	'Scope test failed: expected glossary links only inside paragraph/list-item content.'
+);
+
+// Test 12: Canonical schema builder should map CAT data and keep citations/entity links.
+$schema_term_id = cat_create_term(
+	'Entity Resolution',
+	'Fallback post content for read aloud.',
+	array(),
+	'Entity resolution is matching records that refer to the same real-world entity.',
+	array(
+		'https://en.wikipedia.org/wiki/Record_linkage',
+		'https://www.wikidata.org/wiki/Q1266546',
+	),
+	array(
+		array(
+			'url'           => 'https://doi.org/10.1145/123456',
+			'title'         => 'A Survey of Entity Resolution',
+			'publisher'     => 'ACM',
+			'datePublished' => '2024-06-01',
+		),
+	)
+);
+$test_post_ids[] = $schema_term_id;
+$canonical_node  = $seo_peacekeeper->get_canonical_term_schema( $schema_term_id );
+cat_assert(
+	'DefinedTerm' === $canonical_node['@type'] && ! empty( $canonical_node['inDefinedTermSet'] ),
+	'SEO Peacekeeper test failed: canonical node should include DefinedTerm type and inDefinedTermSet.'
+);
+cat_assert(
+	! empty( $canonical_node['sameAs'] ) && 2 === count( $canonical_node['sameAs'] ),
+	'SEO Peacekeeper test failed: canonical node should preserve sameAs links.'
+);
+cat_assert(
+	! empty( $canonical_node['citation'] ) && is_array( $canonical_node['citation'][0] ),
+	'SEO Peacekeeper test failed: canonical node should preserve citation objects.'
+);
+
+// Test 13: Semantic wrapper should include dfn/name/role definition markup on term content.
+$schema_term_post = get_post( $schema_term_id );
+setup_postdata( $schema_term_post );
+$semantic_content = apply_filters( 'the_content', 'Schema definition body.' );
+cat_assert(
+	strpos( $semantic_content, 'cat-defined-term-semantic' ) !== false && strpos( $semantic_content, 'aria-labelledby="cat-defined-term-name-' ) !== false && strpos( $semantic_content, '<dfn id="cat-defined-term-name-' ) !== false && strpos( $semantic_content, 'itemprop="name">Entity Resolution</dfn>' ) !== false,
+	'SEO Peacekeeper test failed: semantic term wrapper should include itemprop name dfn markup.'
+);
+cat_assert(
+	strpos( $semantic_content, 'role="definition"' ) !== false,
+	'SEO Peacekeeper test failed: semantic wrapper should include role definition.'
+);
+
+// Test 14: Read aloud sanitizer should normalize shortcode/symbol-heavy text.
+$read_aloud = $seo_peacekeeper->prepare_read_aloud_text( "Term [shortcode] \n\t details &amp; symbols \x01" );
+cat_assert(
+	strpos( $read_aloud, '[' ) === false && strpos( $read_aloud, '&amp;' ) === false && strpos( $read_aloud, 'symbols' ) !== false,
+	'SEO Peacekeeper test failed: read aloud sanitizer should remove shortcode tokens and decode entities.'
+);
+
+// Test 15: Rank Math and SEOPress adapters should inject canonical node with sameAs/citation parity.
+update_option( \ContextAuthorityToolkit\Cat_SEO_Peacekeeper::OPTION_SCHEMA_OUTPUT_MODE, 'auto' );
+if ( ! defined( 'SEOPRESS_VERSION' ) ) {
+	define( 'SEOPRESS_VERSION', '8.0.0-test' );
+}
+if ( defined( 'SEOPRESS_PRO_VERSION' ) || defined( 'SEOPRESS_PRO_PLUGIN_DIR_PATH' ) ) {
+	$seopress_data     = array( '@graph' => array() );
+	$seopress_filtered = $seo_peacekeeper->inject_seopress_schema( $seopress_data );
+	$seopress_node     = end( $seopress_filtered['@graph'] );
+	cat_assert(
+		! empty( $seopress_node['sameAs'] ) && ! empty( $seopress_node['citation'] ),
+		'SEO Peacekeeper test failed: SEOPress adapter should keep sameAs and citation data when compatible transport is available.'
+	);
+} else {
+	$seopress_data     = array( '@graph' => array() );
+	$seopress_filtered = $seo_peacekeeper->inject_seopress_schema( $seopress_data );
+	cat_assert(
+		$seopress_filtered === $seopress_data,
+		'SEO Peacekeeper test failed: SEOPress Free should not become schema transport owner; standalone fallback should remain responsible for JSON-LD output.'
+	);
+}
+
+if ( ! defined( 'RANK_MATH_VERSION' ) ) {
+	define( 'RANK_MATH_VERSION', '1.0.0-test' );
+}
+$rank_math_data     = array( '@graph' => array() );
+$rank_math_filtered = $seo_peacekeeper->inject_rank_math_json_ld( $rank_math_data, null );
+$rank_math_node     = end( $rank_math_filtered['@graph'] );
+cat_assert(
+	! empty( $rank_math_node['sameAs'] ) && ! empty( $rank_math_node['citation'] ),
+	'SEO Peacekeeper test failed: Rank Math adapter should keep sameAs and citation data.'
 );
 
 wp_reset_postdata();

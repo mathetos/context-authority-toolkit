@@ -1,0 +1,770 @@
+<?php
+/**
+ * Default-first schema transport and integration module.
+ *
+ * @package ContextAuthorityToolkit
+ */
+
+namespace ContextAuthorityToolkit;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * Keeps CAT as canonical schema source across delivery modes.
+ */
+class Cat_SEO_Peacekeeper {
+	/**
+	 * Schema output mode option key.
+	 */
+	const OPTION_SCHEMA_OUTPUT_MODE = 'cat_schema_output_mode';
+
+	/**
+	 * Breadcrumb integration option key.
+	 */
+	const OPTION_BREADCRUMB_INTEGRATION = 'cat_breadcrumb_integration';
+
+	/**
+	 * Auto mode.
+	 */
+	const MODE_AUTO = 'auto';
+
+	/**
+	 * Standalone mode.
+	 */
+	const MODE_STANDALONE = 'standalone';
+
+	/**
+	 * Off mode.
+	 */
+	const MODE_OFF = 'off';
+
+	/**
+	 * SEOPress filter used for term schema injection.
+	 */
+	const SEOPRESS_SCHEMA_FILTER = 'seopress_schemas_auto_article_json';
+
+	/**
+	 * Register module hooks.
+	 */
+	public function __construct() {
+		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_action( 'admin_menu', array( $this, 'register_settings_page' ) );
+		add_action( 'wp_head', array( $this, 'output_standalone_json_ld' ), 99 );
+		add_filter( 'the_content', array( $this, 'add_semantic_term_markup' ), 30 );
+		add_filter( 'wpseo_schema_graph_pieces', array( $this, 'inject_yoast_graph_piece' ), 20, 2 );
+		add_filter( 'wpseo_schema_needs_breadcrumb', array( $this, 'filter_yoast_breadcrumb_setting' ) );
+		add_filter( 'rank_math/json_ld', array( $this, 'inject_rank_math_json_ld' ), 20, 2 );
+		add_filter( 'rank_math/json_ld/breadcrumbs_enabled', array( $this, 'filter_rank_math_breadcrumb_setting' ) );
+		add_filter( self::SEOPRESS_SCHEMA_FILTER, array( $this, 'inject_seopress_schema' ) );
+	}
+
+	/**
+	 * Register module settings.
+	 *
+	 * @return void
+	 */
+	public function register_settings() {
+		register_setting(
+			'cat_schema_settings',
+			self::OPTION_SCHEMA_OUTPUT_MODE,
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array( $this, 'sanitize_schema_output_mode' ),
+				'default'           => self::MODE_AUTO,
+			)
+		);
+
+		register_setting(
+			'cat_schema_settings',
+			self::OPTION_BREADCRUMB_INTEGRATION,
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => 'rest_sanitize_boolean',
+				'default'           => true,
+			)
+		);
+
+		add_settings_section(
+			'cat_schema_settings_section',
+			__( 'SEO Peacekeeper', 'context-authority-toolkit' ),
+			array( $this, 'render_settings_intro' ),
+			'cat-schema-settings'
+		);
+
+		add_settings_field(
+			self::OPTION_SCHEMA_OUTPUT_MODE,
+			__( 'Schema Output', 'context-authority-toolkit' ),
+			array( $this, 'render_schema_output_mode_field' ),
+			'cat-schema-settings',
+			'cat_schema_settings_section'
+		);
+
+		add_settings_field(
+			self::OPTION_BREADCRUMB_INTEGRATION,
+			__( 'Breadcrumb Integration', 'context-authority-toolkit' ),
+			array( $this, 'render_breadcrumb_integration_field' ),
+			'cat-schema-settings',
+			'cat_schema_settings_section'
+		);
+	}
+
+	/**
+	 * Register settings page.
+	 *
+	 * @return void
+	 */
+	public function register_settings_page() {
+		add_options_page(
+			__( 'CAT Schema Settings', 'context-authority-toolkit' ),
+			__( 'CAT Schema', 'context-authority-toolkit' ),
+			'manage_options',
+			'cat-schema-settings',
+			array( $this, 'render_settings_page' )
+		);
+	}
+
+	/**
+	 * Output settings intro text.
+	 *
+	 * @return void
+	 */
+	public function render_settings_intro() {
+		echo '<p>' . esc_html__( 'Control how glossary DefinedTerm schema is delivered and how CAT coordinates breadcrumbs with SEO plugins.', 'context-authority-toolkit' ) . '</p>';
+	}
+
+	/**
+	 * Render schema mode setting.
+	 *
+	 * @return void
+	 */
+	public function render_schema_output_mode_field() {
+		$current = $this->get_schema_output_mode_setting();
+		$options = array(
+			self::MODE_AUTO       => __( 'Enabled (Auto-Detect)', 'context-authority-toolkit' ),
+			self::MODE_STANDALONE => __( 'Standalone Only', 'context-authority-toolkit' ),
+			self::MODE_OFF        => __( 'Off', 'context-authority-toolkit' ),
+		);
+
+		echo '<select name="' . esc_attr( self::OPTION_SCHEMA_OUTPUT_MODE ) . '">';
+		foreach ( $options as $value => $label ) {
+			printf(
+				'<option value="%1$s" %2$s>%3$s</option>',
+				esc_attr( $value ),
+				selected( $current, $value, false ),
+				esc_html( $label )
+			);
+		}
+		echo '</select>';
+	}
+
+	/**
+	 * Render breadcrumb setting.
+	 *
+	 * @return void
+	 */
+	public function render_breadcrumb_integration_field() {
+		printf(
+			'<label><input type="checkbox" name="%1$s" value="1" %2$s /> %3$s</label>',
+			esc_attr( self::OPTION_BREADCRUMB_INTEGRATION ),
+			checked( $this->is_breadcrumb_integration_enabled(), true, false ),
+			esc_html__( 'Enable interoperability with Yoast/Rank Math breadcrumb schema controls.', 'context-authority-toolkit' )
+		);
+	}
+
+	/**
+	 * Render settings page.
+	 *
+	 * @return void
+	 */
+	public function render_settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		?>
+		<div class="wrap">
+			<h1><?php esc_html_e( 'CAT Schema Settings', 'context-authority-toolkit' ); ?></h1>
+			<form action="options.php" method="post">
+				<?php
+				settings_fields( 'cat_schema_settings' );
+				do_settings_sections( 'cat-schema-settings' );
+				submit_button();
+				?>
+			</form>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Sanitize schema mode setting.
+	 *
+	 * @param string $mode Submitted mode.
+	 * @return string
+	 */
+	public function sanitize_schema_output_mode( $mode ) {
+		$mode = is_string( $mode ) ? strtolower( trim( $mode ) ) : '';
+
+		if ( ! in_array( $mode, array( self::MODE_AUTO, self::MODE_STANDALONE, self::MODE_OFF ), true ) ) {
+			return self::MODE_AUTO;
+		}
+
+		return $mode;
+	}
+
+	/**
+	 * Get saved schema mode.
+	 *
+	 * @return string
+	 */
+	private function get_schema_output_mode_setting() {
+		$mode = get_option( self::OPTION_SCHEMA_OUTPUT_MODE, self::MODE_AUTO );
+		return $this->sanitize_schema_output_mode( $mode );
+	}
+
+	/**
+	 * Get resolved schema mode after external overrides.
+	 *
+	 * @return string
+	 */
+	private function get_resolved_schema_output_mode() {
+		$mode = $this->get_schema_output_mode_setting();
+		$mode = apply_filters( 'context_authority_toolkit_schema_output_mode', $mode );
+
+		return $this->sanitize_schema_output_mode( $mode );
+	}
+
+	/**
+	 * Check whether breadcrumb integration is enabled.
+	 *
+	 * @return bool
+	 */
+	private function is_breadcrumb_integration_enabled() {
+		$enabled = (bool) rest_sanitize_boolean( get_option( self::OPTION_BREADCRUMB_INTEGRATION, true ) );
+		return (bool) apply_filters( 'context_authority_toolkit_schema_breadcrumb_integration_enabled', $enabled );
+	}
+
+	/**
+	 * Resolve transport mode from settings and active SEO plugins.
+	 *
+	 * @return string
+	 */
+	private function resolve_transport_mode() {
+		$mode = $this->get_resolved_schema_output_mode();
+
+		if ( self::MODE_OFF === $mode ) {
+			return self::MODE_OFF;
+		}
+
+		if ( self::MODE_STANDALONE === $mode ) {
+			return self::MODE_STANDALONE;
+		}
+
+		if ( defined( 'WPSEO_VERSION' ) ) {
+			return 'yoast';
+		}
+
+		if ( defined( 'RANK_MATH_VERSION' ) ) {
+			return 'rank-math';
+		}
+
+		if ( defined( 'SEOPRESS_VERSION' ) ) {
+			if ( $this->has_seopress_transport_support() ) {
+				return 'seopress';
+			}
+
+			// If SEOPress is active but no compatible schema hook is available,
+			// keep CAT in standalone mode to preserve schema parity.
+			return self::MODE_STANDALONE;
+		}
+
+		return self::MODE_STANDALONE;
+	}
+
+	/**
+	 * Build canonical term schema from CAT-owned data.
+	 *
+	 * @param int $term_post_id Term post ID.
+	 * @return array
+	 */
+	public function get_canonical_term_schema( $term_post_id ) {
+		$term_post = get_post( absint( $term_post_id ) );
+		if ( ! $term_post || Cat_Glossary_Admin::POST_TYPE !== $term_post->post_type ) {
+			return array();
+		}
+
+		$name         = trim( (string) $term_post->post_title );
+		$description  = get_post_meta( $term_post->ID, Cat_Glossary_Admin::TOOLTIP_META_KEY, true );
+		$description  = is_string( $description ) ? trim( $description ) : '';
+		$term_url     = get_permalink( $term_post->ID );
+		$defined_set  = $this->get_defined_term_set_url();
+		$same_as_raw  = get_post_meta( $term_post->ID, Cat_Glossary_Admin::SAME_AS_META_KEY, true );
+		$sources_raw  = get_post_meta( $term_post->ID, Cat_Glossary_Admin::SOURCES_META_KEY, true );
+		$read_aloud   = $this->prepare_read_aloud_text( $description ? $description : (string) $term_post->post_content );
+		$canonical    = array(
+			'@type'            => 'DefinedTerm',
+			'@id'              => trailingslashit( (string) $term_url ) . '#definedterm',
+			'name'             => $name,
+			'description'      => $description ? $description : $read_aloud,
+			'url'              => (string) $term_url,
+			'inDefinedTermSet' => (string) $defined_set,
+			'sameAs'           => $this->normalize_same_as_array( $same_as_raw ),
+			'citation'         => $this->normalize_citation_array( $sources_raw ),
+		);
+
+		$canonical = apply_filters( 'context_authority_toolkit_schema_canonical_term_data', $canonical, $term_post );
+
+		return $this->remove_empty_schema_properties( $canonical );
+	}
+
+	/**
+	 * Normalize sameAs values into unique URL list.
+	 *
+	 * @param mixed $same_as Raw meta value.
+	 * @return array
+	 */
+	public function normalize_same_as_array( $same_as ) {
+		if ( is_string( $same_as ) ) {
+			$same_as = preg_split( '/[\r\n,]+/', $same_as );
+		}
+
+		if ( ! is_array( $same_as ) ) {
+			return array();
+		}
+
+		$normalized = array();
+		foreach ( $same_as as $entry ) {
+			$url = $this->sanitize_schema_url( $entry );
+			if ( '' !== $url ) {
+				$normalized[] = $url;
+			}
+		}
+
+		return array_values( array_unique( $normalized ) );
+	}
+
+	/**
+	 * Normalize source repeater data into citation property.
+	 *
+	 * @param mixed $sources Raw sources meta.
+	 * @return array
+	 */
+	public function normalize_citation_array( $sources ) {
+		if ( ! is_array( $sources ) ) {
+			return array();
+		}
+
+		$citations = array();
+		foreach ( $sources as $source ) {
+			if ( ! is_array( $source ) ) {
+				continue;
+			}
+
+			$url = isset( $source['url'] ) ? $this->sanitize_schema_url( $source['url'] ) : '';
+			if ( '' === $url ) {
+				continue;
+			}
+
+			$title          = isset( $source['title'] ) ? sanitize_text_field( $source['title'] ) : '';
+			$publisher_name = isset( $source['publisher'] ) ? sanitize_text_field( $source['publisher'] ) : '';
+			$date           = isset( $source['datePublished'] ) ? $this->sanitize_schema_date( $source['datePublished'] ) : '';
+
+			if ( '' === $title && '' === $publisher_name && '' === $date ) {
+				$citations[] = $url;
+				continue;
+			}
+
+			$citation = array(
+				'@type' => 'CreativeWork',
+				'url'   => $url,
+			);
+
+			if ( '' !== $title ) {
+				$citation['name'] = $title;
+			}
+
+			if ( '' !== $publisher_name ) {
+				$citation['publisher'] = array(
+					'@type' => 'Organization',
+					'name'  => $publisher_name,
+				);
+			}
+
+			if ( '' !== $date ) {
+				$citation['datePublished'] = $date;
+			}
+
+			$citations[] = $citation;
+		}
+
+		return $citations;
+	}
+
+	/**
+	 * Emit standalone JSON-LD if this module is the transport owner.
+	 *
+	 * @return void
+	 */
+	public function output_standalone_json_ld() {
+		if ( self::MODE_STANDALONE !== $this->resolve_transport_mode() ) {
+			return;
+		}
+
+		$term_id = $this->get_context_term_post_id();
+		if ( $term_id <= 0 ) {
+			return;
+		}
+
+		$schema_node = $this->get_canonical_term_schema( $term_id );
+		if ( empty( $schema_node ) ) {
+			return;
+		}
+
+		$graph = array(
+			'@context' => 'https://schema.org',
+			'@graph'   => array( $schema_node ),
+		);
+
+		echo '<script type="application/ld+json">' . wp_json_encode( $graph, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . '</script>';
+	}
+
+	/**
+	 * Inject CAT-defined term node into Yoast graph pieces.
+	 *
+	 * @param array $pieces  Existing pieces.
+	 * @param mixed $context Yoast schema context object.
+	 * @return array
+	 */
+	public function inject_yoast_graph_piece( $pieces, $context ) {
+		if ( 'yoast' !== $this->resolve_transport_mode() ) {
+			return $pieces;
+		}
+
+		if ( ! class_exists( '\Yoast\WP\SEO\Generators\Schema\Abstract_Schema_Piece' ) ) {
+			return $pieces;
+		}
+
+		$node = $this->get_canonical_term_schema( $this->get_context_term_post_id() );
+		if ( empty( $node ) ) {
+			return $pieces;
+		}
+
+		$pieces[] = new class( $node ) extends \Yoast\WP\SEO\Generators\Schema\Abstract_Schema_Piece {
+			/**
+			 * Node payload.
+			 *
+			 * @var array
+			 */
+			private $node = array();
+
+			/**
+			 * Constructor.
+			 *
+			 * @param array $node Schema node.
+			 */
+			public function __construct( $node ) {
+				$this->node = $node;
+			}
+
+			/**
+			 * Always needed when node exists.
+			 *
+			 * @return bool
+			 */
+			public function is_needed() {
+				return ! empty( $this->node );
+			}
+
+			/**
+			 * Return the final node.
+			 *
+			 * @return array
+			 */
+			public function generate() {
+				return $this->node;
+			}
+		};
+
+		return $pieces;
+	}
+
+	/**
+	 * Inject CAT-defined node into Rank Math JSON-LD payload.
+	 *
+	 * @param array $data   Existing JSON-LD data.
+	 * @param mixed $jsonld Rank Math JsonLD object.
+	 * @return array
+	 */
+	public function inject_rank_math_json_ld( $data, $jsonld ) {
+		if ( 'rank-math' !== $this->resolve_transport_mode() ) {
+			return $data;
+		}
+
+		$node = $this->get_canonical_term_schema( $this->get_context_term_post_id() );
+		if ( empty( $node ) ) {
+			return $data;
+		}
+
+		if ( isset( $data['@graph'] ) && is_array( $data['@graph'] ) ) {
+			$data['@graph'][] = $node;
+			return $data;
+		}
+
+		if ( $this->is_sequential_array( $data ) ) {
+			$data[] = $node;
+			return $data;
+		}
+
+		$data['CAT_DefinedTerm'] = $node;
+		return $data;
+	}
+
+	/**
+	 * Inject CAT-defined node into documented SEOPress schema filter path.
+	 *
+	 * @param array $schema Existing SEOPress schema array.
+	 * @return array
+	 */
+	public function inject_seopress_schema( $schema ) {
+		if ( 'seopress' !== $this->resolve_transport_mode() || ! is_array( $schema ) ) {
+			return $schema;
+		}
+
+		$node = $this->get_canonical_term_schema( $this->get_context_term_post_id() );
+		if ( empty( $node ) ) {
+			return $schema;
+		}
+
+		if ( isset( $schema['@graph'] ) && is_array( $schema['@graph'] ) ) {
+			$schema['@graph'][] = $node;
+			return $schema;
+		}
+
+		if ( $this->is_sequential_array( $schema ) ) {
+			$schema[] = $node;
+			return $schema;
+		}
+
+		$schema['CAT_DefinedTerm'] = $node;
+		return $schema;
+	}
+
+	/**
+	 * Determine if compatible SEOPress schema transport is available.
+	 *
+	 * @return bool
+	 */
+	private function has_seopress_transport_support() {
+		// In practice, SEOPress Free does not provide CAT-compatible schema transport
+		// for this DefinedTerm integration path. Require PRO before treating SEOPress
+		// as schema transport owner in auto mode.
+		$has_pro_support = defined( 'SEOPRESS_PRO_VERSION' ) || defined( 'SEOPRESS_PRO_PLUGIN_DIR_PATH' );
+		$has_filter      = false !== has_filter( self::SEOPRESS_SCHEMA_FILTER );
+		$is_available    = ( $has_pro_support && $has_filter );
+
+		/**
+		 * Allow transport compatibility overrides for custom SEOPress builds.
+		 *
+		 * @param bool $is_available Whether compatible transport was detected.
+		 */
+		return (bool) apply_filters( 'context_authority_toolkit_seopress_transport_available', $is_available );
+	}
+
+	/**
+	 * Add semantic microdata wrapper on term pages.
+	 *
+	 * @param string $content Term content.
+	 * @return string
+	 */
+	public function add_semantic_term_markup( $content ) {
+		$term_id = $this->get_context_term_post_id();
+		if ( $term_id <= 0 || false !== strpos( $content, 'cat-defined-term-semantic' ) ) {
+			return $content;
+		}
+
+		$term_post = get_post( $term_id );
+		if ( ! $term_post ) {
+			return $content;
+		}
+
+		$title = trim( (string) $term_post->post_title );
+		if ( '' === $title ) {
+			return $content;
+		}
+
+		$term_label_id = sprintf( 'cat-defined-term-name-%d', (int) $term_id );
+
+		return sprintf(
+			'<article class="cat-defined-term-semantic" itemscope itemtype="https://schema.org/DefinedTerm" aria-labelledby="%1$s"><header><dfn id="%1$s" itemprop="name">%2$s</dfn></header><div itemprop="description" role="definition">%3$s</div></article>',
+			esc_attr( $term_label_id ),
+			esc_html( $title ),
+			$content
+		);
+	}
+
+	/**
+	 * Sanitize definition text for read-aloud use.
+	 *
+	 * @param string $raw_text Raw text.
+	 * @return string
+	 */
+	public function prepare_read_aloud_text( $raw_text ) {
+		$text = strip_shortcodes( (string) $raw_text );
+		$text = wp_strip_all_tags( $text, true );
+		$text = html_entity_decode( $text, ENT_QUOTES, get_bloginfo( 'charset' ) );
+		$text = preg_replace( '/[^\P{C}\n\t]+/u', ' ', $text );
+		$text = preg_replace( '/\s+/', ' ', $text );
+		$text = trim( $text );
+
+		return (string) apply_filters( 'context_authority_toolkit_schema_read_aloud_text', $text, $raw_text );
+	}
+
+	/**
+	 * Allow CAT setting to disable Yoast breadcrumb graph output.
+	 *
+	 * @param bool $needs_breadcrumb Existing value.
+	 * @return bool
+	 */
+	public function filter_yoast_breadcrumb_setting( $needs_breadcrumb ) {
+		if ( ! $this->is_breadcrumb_integration_enabled() ) {
+			return false;
+		}
+
+		return $needs_breadcrumb;
+	}
+
+	/**
+	 * Allow CAT setting to disable Rank Math breadcrumb graph output.
+	 *
+	 * @param bool $enabled Existing value.
+	 * @return bool
+	 */
+	public function filter_rank_math_breadcrumb_setting( $enabled ) {
+		if ( ! $this->is_breadcrumb_integration_enabled() ) {
+			return false;
+		}
+
+		return $enabled;
+	}
+
+	/**
+	 * Resolve current context term ID.
+	 *
+	 * @return int
+	 */
+	private function get_context_term_post_id() {
+		if ( is_singular( Cat_Glossary_Admin::POST_TYPE ) ) {
+			$post_id = get_queried_object_id();
+			return $post_id > 0 ? absint( $post_id ) : 0;
+		}
+
+		$post_id = get_the_ID();
+		if ( $post_id > 0 && Cat_Glossary_Admin::POST_TYPE === get_post_type( $post_id ) ) {
+			return absint( $post_id );
+		}
+
+		global $post;
+		if ( $post instanceof \WP_Post && Cat_Glossary_Admin::POST_TYPE === $post->post_type ) {
+			return absint( $post->ID );
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Get glossary archive URL for inDefinedTermSet.
+	 *
+	 * @return string
+	 */
+	private function get_defined_term_set_url() {
+		$archive_url = get_post_type_archive_link( Cat_Glossary_Admin::POST_TYPE );
+		if ( $archive_url ) {
+			return $archive_url;
+		}
+
+		return home_url( '/' . Cat_Glossary_Admin::POST_TYPE . '/' );
+	}
+
+	/**
+	 * Remove empty values from schema payload.
+	 *
+	 * @param array $schema Schema payload.
+	 * @return array
+	 */
+	private function remove_empty_schema_properties( array $schema ) {
+		foreach ( $schema as $key => $value ) {
+			if ( is_array( $value ) && empty( $value ) ) {
+				unset( $schema[ $key ] );
+				continue;
+			}
+
+			if ( ! is_array( $value ) && '' === trim( (string) $value ) ) {
+				unset( $schema[ $key ] );
+			}
+		}
+
+		return $schema;
+	}
+
+	/**
+	 * Check whether array has sequential integer keys.
+	 *
+	 * @param mixed $value Candidate.
+	 * @return bool
+	 */
+	private function is_sequential_array( $value ) {
+		if ( ! is_array( $value ) ) {
+			return false;
+		}
+
+		return array_keys( $value ) === range( 0, count( $value ) - 1 );
+	}
+
+	/**
+	 * Normalize schema-compatible date values.
+	 *
+	 * @param string $date Candidate date.
+	 * @return string
+	 */
+	private function sanitize_schema_date( $date ) {
+		$date = trim( (string) $date );
+		if ( '' === $date ) {
+			return '';
+		}
+
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+			return '';
+		}
+
+		$parsed = \DateTime::createFromFormat( '!Y-m-d', $date, new \DateTimeZone( 'UTC' ) );
+		$errors = \DateTime::getLastErrors();
+		if (
+			false === $parsed ||
+			( is_array( $errors ) && ! empty( $errors['warning_count'] ) ) ||
+			( is_array( $errors ) && ! empty( $errors['error_count'] ) )
+		) {
+			return '';
+		}
+
+		return $parsed->format( 'Y-m-d' );
+	}
+
+	/**
+	 * Normalize schema URLs to valid public HTTP(S) URLs.
+	 *
+	 * @param mixed $url Candidate URL.
+	 * @return string
+	 */
+	private function sanitize_schema_url( $url ) {
+		$url = esc_url_raw( trim( (string) $url ), array( 'http', 'https' ) );
+		if ( '' === $url ) {
+			return '';
+		}
+
+		if ( ! wp_http_validate_url( $url ) ) {
+			return '';
+		}
+
+		return $url;
+	}
+}

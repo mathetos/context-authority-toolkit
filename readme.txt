@@ -32,6 +32,25 @@ For full provenance and attribution details, see:
 
 == Changelog ==
 
+= 0.9.0 =
+* Added new SEO_Peacekeeper module to generate canonical DefinedTerm schema from CAT-owned term data.
+* Added schema transport modes: auto, standalone, and off, with integrations for Yoast and Rank Math, plus SEOPress capability-aware handling.
+* Added fallback behavior so unsupported SEO-plugin transports fall back to CAT standalone JSON-LD output.
+* Added new term metadata support for authority/entity links (sameAs) and sources/references (citation mapping).
+* Expanded block editor sidebar UI with “Related Authority Links” and “Sources and References” fields and clearer layperson guidance.
+* Added field validation/sanitization hardening:
+-- URL fields restricted to valid public http/https URLs
+-- datePublished normalized to strict YYYY-MM-DD
+* Improved semantic output for accessibility and machine parsing:
+-- DefinedTerm wrapper uses aria-labelledby tied to stable <dfn id="...">
+-- retained itemprop="name" and role="definition" structure
+* Updated glossary auto-link behavior:
+-- links only inside <p> and <li>
+-- caps auto-linking to first two mentions
+-- tooltip “Learn more” link now includes rel="help"
+* Strengthened behavior test coverage for schema parity, sanitizers, transport adapters, and semantic markup contract.
+* Updated internal architecture/contracts/testing docs to reflect current behavior and quality gates.
+
 = 0.1.0 =
 * Initial clean fork from wporg-glossary.
 * Added nonce and capability checks for metabox saving.

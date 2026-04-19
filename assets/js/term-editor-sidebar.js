@@ -10,6 +10,7 @@
 	var TextControl = wp.components.TextControl;
 	var TextareaControl = wp.components.TextareaControl;
 	var ToggleControl = wp.components.ToggleControl;
+	var Button = wp.components.Button;
 	var createElement = wp.element.createElement;
 	var useDispatch = wp.data.useDispatch;
 	var useSelect = wp.data.useSelect;
@@ -17,6 +18,8 @@
 
 	var ALTERNATIVES_META_KEY = 'cat_alternatives';
 	var TOOLTIP_META_KEY = 'cat_tooltip_content';
+	var SAME_AS_META_KEY = window.catToolkitEditor && window.catToolkitEditor.sameAsMeta ? window.catToolkitEditor.sameAsMeta : 'cat_same_as';
+	var SOURCES_META_KEY = window.catToolkitEditor && window.catToolkitEditor.sourcesMeta ? window.catToolkitEditor.sourcesMeta : 'cat_sources';
 	var PUBLIC_DISABLE_AUTOLINK_META_KEY = window.catToolkitEditor && window.catToolkitEditor.disableAutolinkMeta ? window.catToolkitEditor.disableAutolinkMeta : 'cat_disable_autolinking';
 	var PUBLIC_POST_TYPES = window.catToolkitEditor && Array.isArray( window.catToolkitEditor.publicPostTypes ) ? window.catToolkitEditor.publicPostTypes : [ 'post', 'page', 'term' ];
 
@@ -36,6 +39,59 @@
 		return names.filter( function( name, index ) {
 			return names.indexOf( name ) === index;
 		} );
+	}
+
+	function parseSameAs( value ) {
+		if ( 'string' !== typeof value ) {
+			return [];
+		}
+
+		var links = value.split( /[\n,]+/ ).map( function( link ) {
+			return link.trim();
+		} );
+
+		return links.filter( function( link, index ) {
+			return link.length > 0 && links.indexOf( link ) === index;
+		} );
+	}
+
+	function isValidHttpUrl( value ) {
+		if ( 'string' !== typeof value || ! value.trim().length ) {
+			return false;
+		}
+
+		try {
+			var parsed = new window.URL( value.trim() );
+			return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+		} catch ( error ) {
+			return false;
+		}
+	}
+
+	function isValidIsoDate( value ) {
+		if ( 'string' !== typeof value || ! value.trim().length ) {
+			return true;
+		}
+
+		if ( ! /^\d{4}-\d{2}-\d{2}$/.test( value.trim() ) ) {
+			return false;
+		}
+
+		var parsed = new Date( value + 'T00:00:00Z' );
+		if ( Number.isNaN( parsed.getTime() ) ) {
+			return false;
+		}
+
+		return parsed.toISOString().slice( 0, 10 ) === value.trim();
+	}
+
+	function normalizeSource( source ) {
+		return {
+			url: source && source.url ? String( source.url ) : '',
+			title: source && source.title ? String( source.title ) : '',
+			publisher: source && source.publisher ? String( source.publisher ) : '',
+			datePublished: source && source.datePublished ? String( source.datePublished ) : ''
+		};
 	}
 
 	function TermSidebarFields() {
@@ -88,6 +144,90 @@
 
 		var alternatives = Array.isArray( meta[ ALTERNATIVES_META_KEY ] ) ? meta[ ALTERNATIVES_META_KEY ].join( ', ' ) : '';
 		var tooltipContent = 'string' === typeof meta[ TOOLTIP_META_KEY ] ? meta[ TOOLTIP_META_KEY ] : '';
+		var sameAsLinks = Array.isArray( meta[ SAME_AS_META_KEY ] ) ? meta[ SAME_AS_META_KEY ] : [];
+		var sources = Array.isArray( meta[ SOURCES_META_KEY ] ) ? meta[ SOURCES_META_KEY ] : [];
+		var invalidSameAsCount = sameAsLinks.filter( function( link ) {
+			return ! isValidHttpUrl( link );
+		} ).length;
+		var updateSourceItem = function( index, key, value ) {
+			var nextSources = sources.map( function( source ) {
+				return normalizeSource( source );
+			} );
+			var currentSource = normalizeSource( nextSources[ index ] || {} );
+			currentSource[ key ] = value;
+			nextSources[ index ] = currentSource;
+			setMetaValue( SOURCES_META_KEY, nextSources );
+		};
+		var addSourceItem = function() {
+			var nextSources = sources.map( function( source ) {
+				return normalizeSource( source );
+			} );
+			nextSources.push( {
+				url: '',
+				title: '',
+				publisher: '',
+				datePublished: ''
+			} );
+			setMetaValue( SOURCES_META_KEY, nextSources );
+		};
+		var removeSourceItem = function( index ) {
+			var nextSources = sources.filter( function( source, itemIndex ) {
+				return itemIndex !== index;
+			} );
+			setMetaValue( SOURCES_META_KEY, nextSources );
+		};
+		var sourceRows = sources.map( function( source, index ) {
+			var normalizedSource = normalizeSource( source );
+
+			return createElement(
+				'div',
+				{
+					key: 'cat-source-' + index,
+					style: { marginBottom: '16px', border: '1px solid #ddd', padding: '12px' }
+				},
+				createElement( TextControl, {
+					label: __( 'Source URL', 'context-authority-toolkit' ),
+					help: ! normalizedSource.url.length ? __( 'Required. Use a full URL starting with https://', 'context-authority-toolkit' ) : ( isValidHttpUrl( normalizedSource.url ) ? __( 'Looks good.', 'context-authority-toolkit' ) : __( 'Please enter a valid URL (for example: https://example.com/article).', 'context-authority-toolkit' ) ),
+					type: 'url',
+					placeholder: __( 'https://example.com/source-article', 'context-authority-toolkit' ),
+					value: normalizedSource.url,
+					onChange: function( value ) {
+						updateSourceItem( index, 'url', value || '' );
+					}
+				} ),
+				createElement( TextControl, {
+					label: __( 'Source Title', 'context-authority-toolkit' ),
+					value: normalizedSource.title,
+					onChange: function( value ) {
+						updateSourceItem( index, 'title', value || '' );
+					}
+				} ),
+				createElement( TextControl, {
+					label: __( 'Publisher', 'context-authority-toolkit' ),
+					value: normalizedSource.publisher,
+					onChange: function( value ) {
+						updateSourceItem( index, 'publisher', value || '' );
+					}
+				} ),
+				createElement( TextControl, {
+					label: __( 'Date Published', 'context-authority-toolkit' ),
+					help: ! normalizedSource.datePublished.length ? __( 'Use YYYY-MM-DD when possible.', 'context-authority-toolkit' ) : ( isValidIsoDate( normalizedSource.datePublished ) ? __( 'Date format looks good.', 'context-authority-toolkit' ) : __( 'Invalid date format. Please use YYYY-MM-DD.', 'context-authority-toolkit' ) ),
+					type: 'date',
+					placeholder: 'YYYY-MM-DD',
+					value: normalizedSource.datePublished,
+					onChange: function( value ) {
+						updateSourceItem( index, 'datePublished', value || '' );
+					}
+				} ),
+				createElement( Button, {
+					isSecondary: true,
+					isDestructive: true,
+					onClick: function() {
+						removeSourceItem( index );
+					}
+				}, __( 'Remove Source', 'context-authority-toolkit' ) )
+			);
+		} );
 
 		return createElement(
 			wp.element.Fragment,
@@ -141,6 +281,40 @@
 							setMetaValue( TOOLTIP_META_KEY, value || '' );
 						}
 					} )
+				),
+				createElement(
+					PanelRow,
+					null,
+					createElement( TextareaControl, {
+						label: __( 'Related Authority Links', 'context-authority-toolkit' ),
+						help: invalidSameAsCount > 0 ? __( 'One or more links look invalid. Use full URLs (http/https), one per line.', 'context-authority-toolkit' ) : __( 'Add links to trusted pages about this term (for example: Wikipedia, industry standards, or official docs). Use one URL per line (or comma-separated).', 'context-authority-toolkit' ),
+						value: sameAsLinks.join( '\n' ),
+						rows: 4,
+						placeholder: __( 'https://en.wikipedia.org/wiki/...\nhttps://www.example.org/glossary/...', 'context-authority-toolkit' ),
+						onChange: function( value ) {
+							setMetaValue( SAME_AS_META_KEY, parseSameAs( value ) );
+						}
+					} )
+				),
+				createElement(
+					PanelRow,
+					null,
+					createElement(
+						'div',
+						{ style: { width: '100%' } },
+						createElement( 'strong', null, __( 'Sources and References', 'context-authority-toolkit' ) ),
+						createElement(
+							'p',
+							{ style: { marginTop: '8px', marginBottom: '12px' } },
+							__( 'Add the sources that support this definition. Include at least the URL, and optionally the title, publisher, and date.', 'context-authority-toolkit' )
+						),
+						sourceRows.length ? sourceRows : createElement( 'p', null, __( 'No sources added yet. Add your first reference below.', 'context-authority-toolkit' ) ),
+						createElement( Button, {
+							isPrimary: false,
+							isSecondary: true,
+							onClick: addSourceItem
+						}, __( 'Add Source / Reference', 'context-authority-toolkit' ) )
+					)
 				)
 			)
 		);
