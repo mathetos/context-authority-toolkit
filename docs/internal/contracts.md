@@ -53,8 +53,9 @@ This document defines live behavior contracts that must remain true unless a cha
 
 - Term single output includes semantic microdata redundancy:
   - `itemscope itemtype="https://schema.org/DefinedTerm"`
-  - `article[aria-labelledby]` bound to the term name element id
-  - `dfn#cat-defined-term-name-{term_id}[itemprop="name"]`
+  - `article[aria-labelledby]` is present when a term-name `dfn` id is available
+  - first matching term name in the first paragraph is wrapped as `dfn[itemprop="name"]`
+  - if manual `<dfn>` exists, CAT annotates the first one with `itemprop="name"` (and id if missing) without adding another `dfn`
   - `itemprop="description"` with `role="definition"`
 - Read-aloud text is sanitized to remove shortcodes/control symbols and normalize whitespace.
 - Read-aloud text can be customized through `context_authority_toolkit_schema_read_aloud_text`.

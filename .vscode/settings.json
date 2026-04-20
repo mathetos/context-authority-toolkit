@@ -1,0 +1,11 @@
+{
+  "phpcs.enable": true,
+  "phpcs.executablePath": "C:\\Users\\reach\\AppData\\Roaming\\Composer\\vendor\\bin\\phpcs.bat",
+  "phpcs.standard": "${workspaceFolder}/phpcs.xml.dist",
+  "phpcs.showWarnings": true,
+  "phpcs.ignorePatterns": [
+    "**/vendor/**",
+    "**/node_modules/**",
+    "**/build/**"
+  ]
+}

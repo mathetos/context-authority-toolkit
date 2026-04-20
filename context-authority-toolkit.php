@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Context & Authority Toolkit
  * Description:       Adds glossary-powered context tooltips for terms in post and comment content.
- * Version:           0.9.1
+ * Version:           0.9.2
  * Author:            Crucible CRM
  * Author URI:        https://cruciblecrm.com/
  * Forked from:       WordPress.org Glossary (Automattic and contributors)
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * and remains licensed under GPL-2.0-or-later. See ATTRIBUTION.txt.
  */
 
-define( 'CAT_TOOLKIT_VERSION', '0.9.1' );
+define( 'CAT_TOOLKIT_VERSION', '0.9.2' );
 define( 'CAT_TOOLKIT_FILE', __FILE__ );
 define( 'CAT_TOOLKIT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CAT_TOOLKIT_URL', plugin_dir_url( __FILE__ ) );
@@ -34,6 +34,7 @@ require_once CAT_TOOLKIT_DIR . 'includes/class-cat-glossary-handler.php';
 require_once CAT_TOOLKIT_DIR . 'includes/class-cat-glossary-admin.php';
 require_once CAT_TOOLKIT_DIR . 'includes/class-cat-glossary-hovercards.php';
 require_once CAT_TOOLKIT_DIR . 'includes/class-cat-seo-peacekeeper.php';
+require_once CAT_TOOLKIT_DIR . 'includes/class-cat-cite-this-block.php';
 
 /**
  * Bootstrap the plugin.
@@ -47,6 +48,7 @@ function cat_toolkit_bootstrap() {
 	new Cat_Glossary_Hovercards();
 	new Cat_Glossary_Handler( $glossary );
 	new Cat_SEO_Peacekeeper();
+	new Cat_Cite_This_Block();
 }
 add_action( 'plugins_loaded', __NAMESPACE__ . '\\cat_toolkit_bootstrap' );
 

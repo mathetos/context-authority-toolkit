@@ -36,7 +36,7 @@ class Cat_Glossary_Admin {
 	const DISABLE_AUTOLINKING_META_KEY = 'cat_disable_autolinking';
 
 	/**
-	 * sameAs entity links meta key.
+	 * Same as entity links meta key.
 	 */
 	const SAME_AS_META_KEY = 'cat_same_as';
 
@@ -86,13 +86,13 @@ class Cat_Glossary_Admin {
 				'public'       => true,
 				'show_ui'      => true,
 				'show_in_rest' => true,
-				'menu_icon'    => CAT_TOOLKIT_URL . 'assets/images/term-icon.svg',
+				'menu_icon'    => add_query_arg( 'ver', CAT_TOOLKIT_VERSION, CAT_TOOLKIT_URL . 'assets/images/term-icon.svg' ),
 				'hierarchical' => false,
 				'rewrite'      => array(
 					'slug'       => self::POST_TYPE,
 					'with_front' => false,
 				),
-				'supports'     => array( 'title', 'editor', 'excerpt', 'revisions', 'custom-fields' ),
+				'supports'     => array( 'title', 'editor', 'excerpt', 'author', 'revisions', 'custom-fields' ),
 			)
 		);
 	}
@@ -273,6 +273,7 @@ class Cat_Glossary_Admin {
 	 * @return bool
 	 */
 	public function can_edit_term_meta( $allowed, $meta_key, $post_id, $user_id ) {
+		unset( $allowed, $meta_key, $user_id );
 		return current_user_can( 'edit_post', $post_id );
 	}
 

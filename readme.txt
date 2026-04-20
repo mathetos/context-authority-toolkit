@@ -4,7 +4,7 @@ Tags: glossary, tooltips, schema, seo, aeo
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.2
-Stable tag: 0.9.1
+Stable tag: 0.9.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,11 @@ For full provenance and attribution details, see:
 * ATTRIBUTION.txt
 
 == Changelog ==
+
+= 0.9.2 =
+* Bumped plugin version to 0.9.2.
+* Standardized cache-busting across CAT assets by consistently using the plugin version for script/style registration and enqueueing.
+* Added version query parameter to the glossary CPT menu icon asset to keep admin-side icon cache in sync with plugin releases.
 
 = 0.9.1 =
 * Added `excerpt` support to the glossary `term` post type for cleaner summary and SEO workflows.

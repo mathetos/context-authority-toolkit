@@ -1,0 +1,51 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "cat-toolkit/cat-cite-this",
+	"title": "CAT Cite This",
+	"category": "cat-toolkit",
+	"icon": "format-quote",
+	"description": "Copy a glossary citation and BibTeX entry to the clipboard.",
+	"textdomain": "context-authority-toolkit",
+	"supports": {
+		"html": false,
+		"interactivity": true
+	},
+	"attributes": {
+		"includeTitle": {
+			"type": "boolean",
+			"default": true
+		},
+		"includeAuthor": {
+			"type": "boolean",
+			"default": true
+		},
+		"includeLastVerified": {
+			"type": "boolean",
+			"default": true
+		},
+		"includePublisher": {
+			"type": "boolean",
+			"default": true
+		},
+		"includeUrl": {
+			"type": "boolean",
+			"default": true
+		},
+		"includeExcerpt": {
+			"type": "boolean",
+			"default": false
+		},
+		"buttonText": {
+			"type": "string",
+			"default": "Copy citation"
+		},
+		"copiedText": {
+			"type": "string",
+			"default": "Copied!"
+		}
+	},
+	"editorScript": "cat-cite-this-block-editor",
+	"viewScript": "cat-cite-this-view",
+	"style": "cat-cite-this-style"
+}

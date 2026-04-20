@@ -6,6 +6,23 @@
 	var hideDelay = 100;
 	var timers = new WeakMap();
 
+	function closestFromTarget( target, selector ) {
+		var element = target;
+		if ( ! element ) {
+			return null;
+		}
+
+		if ( Node.TEXT_NODE === element.nodeType ) {
+			element = element.parentElement;
+		}
+
+		if ( ! element || ! element.closest ) {
+			return null;
+		}
+
+		return element.closest( selector );
+	}
+
 	function getItemParts( item ) {
 		if ( ! item ) {
 			return null;
@@ -114,7 +131,7 @@
 	document.addEventListener(
 		'mouseenter',
 		function( event ) {
-			var item = event.target.closest( itemSelector );
+			var item = closestFromTarget( event.target, itemSelector );
 			if ( item ) {
 				scheduleOpen( item );
 			}
@@ -125,7 +142,7 @@
 	document.addEventListener(
 		'mouseleave',
 		function( event ) {
-			var item = event.target.closest( itemSelector );
+			var item = closestFromTarget( event.target, itemSelector );
 			if ( ! item ) {
 				return;
 			}
@@ -140,14 +157,14 @@
 	);
 
 	document.addEventListener( 'focusin', function( event ) {
-		var item = event.target.closest( itemSelector );
+		var item = closestFromTarget( event.target, itemSelector );
 		if ( item ) {
 			openItem( item );
 		}
 	} );
 
 	document.addEventListener( 'focusout', function( event ) {
-		var item = event.target.closest( itemSelector );
+		var item = closestFromTarget( event.target, itemSelector );
 		if ( ! item ) {
 			return;
 		}
@@ -160,7 +177,7 @@
 	} );
 
 	document.addEventListener( 'click', function( event ) {
-		var trigger = event.target.closest( triggerSelector );
+		var trigger = closestFromTarget( event.target, triggerSelector );
 		if ( trigger ) {
 			var item = trigger.closest( itemSelector );
 			if ( ! item ) {
@@ -177,7 +194,7 @@
 			return;
 		}
 
-		if ( ! event.target.closest( itemSelector ) ) {
+		if ( ! closestFromTarget( event.target, itemSelector ) ) {
 			closeAllExcept( null );
 		}
 	} );

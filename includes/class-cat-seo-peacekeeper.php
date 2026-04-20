@@ -595,12 +595,130 @@ class Cat_SEO_Peacekeeper {
 		}
 
 		$term_label_id = sprintf( 'cat-defined-term-name-%d', (int) $term_id );
+		$semantic      = $this->inject_defined_term_name_markup( $content, $title, $term_label_id );
+		$name_id       = isset( $semantic['name_id'] ) ? trim( (string) $semantic['name_id'] ) : '';
+		$description   = isset( $semantic['content'] ) ? (string) $semantic['content'] : $content;
+
+		$article_attributes = ' class="cat-defined-term-semantic" itemscope itemtype="https://schema.org/DefinedTerm"';
+		if ( '' !== $name_id ) {
+			$article_attributes .= ' aria-labelledby="' . esc_attr( $name_id ) . '"';
+		}
 
 		return sprintf(
-			'<article class="cat-defined-term-semantic" itemscope itemtype="https://schema.org/DefinedTerm" aria-labelledby="%1$s"><header><dfn id="%1$s" itemprop="name">%2$s</dfn></header><div itemprop="description" role="definition">%3$s</div></article>',
-			esc_attr( $term_label_id ),
-			esc_html( $title ),
-			$content
+			'<article%1$s><div itemprop="description" role="definition">%2$s</div></article>',
+			$article_attributes,
+			$description
+		);
+	}
+
+	/**
+	 * Inject term name microdata into first matching first-paragraph occurrence.
+	 *
+	 * If a manual <dfn> tag already exists, annotate that tag instead of adding
+	 * another one.
+	 *
+	 * @param string $content       Term content.
+	 * @param string $term_name     Term title.
+	 * @param string $fallback_name Fallback semantic ID.
+	 * @return array{content:string,name_id:string}
+	 */
+	private function inject_defined_term_name_markup( $content, $term_name, $fallback_name ) {
+		$content = (string) $content;
+		if ( '' === $content || '' === trim( $term_name ) ) {
+			return array(
+				'content' => $content,
+				'name_id' => '',
+			);
+		}
+
+		if ( preg_match( '/<dfn\b/i', $content ) ) {
+			$updated_content = preg_replace_callback(
+				'/<dfn\b([^>]*)>/i',
+				function ( $matches ) use ( $fallback_name ) {
+					$attributes = isset( $matches[1] ) ? trim( (string) $matches[1] ) : '';
+
+					if ( ! preg_match( '/\bitemprop\s*=\s*(["\'])name\1/i', $attributes ) ) {
+						$attributes .= ' itemprop="name"';
+					}
+
+					if ( ! preg_match( '/\bid\s*=\s*(["\']).*?\1/i', $attributes ) ) {
+						$attributes .= ' id="' . esc_attr( $fallback_name ) . '"';
+					}
+
+					return '<dfn ' . trim( $attributes ) . '>';
+				},
+				$content,
+				1
+			);
+
+			$name_id = '';
+			if (
+				is_string( $updated_content ) &&
+				preg_match( '/<dfn\b[^>]*\bid\s*=\s*(["\'])([^"\']+)\1/i', $updated_content, $id_matches ) &&
+				! empty( $id_matches[2] )
+			) {
+				$name_id = (string) $id_matches[2];
+			}
+
+			return array(
+				'content' => is_string( $updated_content ) ? $updated_content : $content,
+				'name_id' => $name_id,
+			);
+		}
+
+		$first_paragraph = array(
+			'html'  => '',
+			'open'  => '',
+			'body'  => '',
+			'close' => '',
+		);
+		if (
+			! preg_match(
+				'/(<p\b[^>]*>)(.*?)(<\/p>)/is',
+				$content,
+				$paragraph_matches
+			)
+		) {
+			return array(
+				'content' => $content,
+				'name_id' => '',
+			);
+		}
+
+		$first_paragraph['html']  = isset( $paragraph_matches[0] ) ? (string) $paragraph_matches[0] : '';
+		$first_paragraph['open']  = isset( $paragraph_matches[1] ) ? (string) $paragraph_matches[1] : '';
+		$first_paragraph['body']  = isset( $paragraph_matches[2] ) ? (string) $paragraph_matches[2] : '';
+		$first_paragraph['close'] = isset( $paragraph_matches[3] ) ? (string) $paragraph_matches[3] : '';
+
+		if ( '' === $first_paragraph['body'] || false === stripos( wp_strip_all_tags( $first_paragraph['body'] ), $term_name ) ) {
+			return array(
+				'content' => $content,
+				'name_id' => '',
+			);
+		}
+
+		$pattern      = '/' . preg_quote( $term_name, '/' ) . '/i';
+		$replacement  = '<dfn id="' . esc_attr( $fallback_name ) . '" itemprop="name">$0</dfn>';
+		$updated_body = preg_replace( $pattern, $replacement, $first_paragraph['body'], 1, $replace_count );
+
+		if ( ! is_string( $updated_body ) || 1 !== $replace_count ) {
+			return array(
+				'content' => $content,
+				'name_id' => '',
+			);
+		}
+
+		$updated_paragraph = $first_paragraph['open'] . $updated_body . $first_paragraph['close'];
+		$updated_content   = preg_replace(
+			'/' . preg_quote( $first_paragraph['html'], '/' ) . '/',
+			$updated_paragraph,
+			$content,
+			1
+		);
+
+		return array(
+			'content' => is_string( $updated_content ) ? $updated_content : $content,
+			'name_id' => $fallback_name,
 		);
 	}
 

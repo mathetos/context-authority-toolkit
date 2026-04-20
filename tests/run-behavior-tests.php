@@ -474,17 +474,38 @@ cat_assert(
 	'SEO Peacekeeper test failed: canonical node should preserve citation objects.'
 );
 
-// Test 13: Semantic wrapper should include dfn/name/role definition markup on term content.
+// Test 13: Semantic wrapper should inject dfn name markup in first paragraph only.
 $schema_term_post = get_post( $schema_term_id );
 setup_postdata( $schema_term_post );
-$semantic_content = apply_filters( 'the_content', 'Schema definition body.' );
+$semantic_content = apply_filters(
+	'the_content',
+	'<p>Entity Resolution links records across systems.</p><p>Entity Resolution appears again in later content.</p>'
+);
 cat_assert(
-	strpos( $semantic_content, 'cat-defined-term-semantic' ) !== false && strpos( $semantic_content, 'aria-labelledby="cat-defined-term-name-' ) !== false && strpos( $semantic_content, '<dfn id="cat-defined-term-name-' ) !== false && strpos( $semantic_content, 'itemprop="name">Entity Resolution</dfn>' ) !== false,
-	'SEO Peacekeeper test failed: semantic term wrapper should include itemprop name dfn markup.'
+	strpos( $semantic_content, 'cat-defined-term-semantic' ) !== false && strpos( $semantic_content, '<dfn id="cat-defined-term-name-' ) !== false && strpos( $semantic_content, 'itemprop="name">Entity Resolution</dfn>' ) !== false,
+	'SEO Peacekeeper test failed: semantic term wrapper should inject term-name dfn markup.'
 );
 cat_assert(
 	strpos( $semantic_content, 'role="definition"' ) !== false,
 	'SEO Peacekeeper test failed: semantic wrapper should include role definition.'
+);
+cat_assert(
+	1 === preg_match_all( '/<dfn\b[^>]*itemprop="name"[^>]*>Entity Resolution<\/dfn>/', $semantic_content ),
+	'SEO Peacekeeper test failed: semantic term wrapper should only annotate first first-paragraph occurrence.'
+);
+
+// Test 13b: Existing manual dfn should be annotated, not duplicated.
+$semantic_content_manual = apply_filters(
+	'the_content',
+	'<p><dfn>Entity Resolution</dfn> links records.</p><p>Entity Resolution appears later.</p>'
+);
+cat_assert(
+	1 === preg_match_all( '/<dfn\b/i', $semantic_content_manual ),
+	'SEO Peacekeeper test failed: existing manual dfn should not be duplicated.'
+);
+cat_assert(
+	false !== strpos( $semantic_content_manual, '<dfn itemprop="name" id="cat-defined-term-name-' ) || false !== strpos( $semantic_content_manual, '<dfn id="cat-defined-term-name-' ),
+	'SEO Peacekeeper test failed: existing manual dfn should be annotated with semantic name attributes.'
 );
 
 // Test 14: Read aloud sanitizer should normalize shortcode/symbol-heavy text.
